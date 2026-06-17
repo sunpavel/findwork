@@ -151,8 +151,32 @@ def _hh_token() -> str:
     return tok
 
 
-def _hh_query(text: str, token: str, area: int = 1, per_page: int = 50) -> list[dict]:
-    qs = urllib.parse.urlencode({"text": text, "area": area, "per_page": per_page, "page": 0})
+def _hh_query(text: str, token: str, area: int = 1, per_page: int = 100,
+              date_from: str | None = None, search_field: str = "name",
+              order_by: str = "publication_time") -> list[dict]:
+    """Поиск по GET /vacancies согласно официальной спецификации.
+
+    Параметры подобраны осознанно (см. docs/hh_api.md):
+      • search_field=name  — ищем роль в НАЗВАНИИ вакансии (точнее, без мусора из тела);
+      • area               — регион (1 = Москва; задаётся в profile.locations.hh_area_ids);
+      • only_with_salary=false — не отсекаем вакансии без вилки (директорские часто без неё),
+                                 зарплату оценивает скоринг;
+      • order_by=publication_time — сначала свежие;
+      • date_from          — только вакансии не старше даты (для утреннего «нового»);
+      • per_page=100       — максимум на страницу.
+    """
+    params = {
+        "text": text,
+        "search_field": search_field,
+        "area": area,
+        "only_with_salary": "false",
+        "order_by": order_by,
+        "per_page": per_page,
+        "page": 0,
+    }
+    if date_from:
+        params["date_from"] = date_from
+    qs = urllib.parse.urlencode(params)
     req = urllib.request.Request(
         f"{HH_API_BASE}/vacancies?{qs}",
         headers={"Authorization": f"Bearer {token}", "HH-User-Agent": _hh_user_agent(),
@@ -177,21 +201,25 @@ def _hh_query(text: str, token: str, area: int = 1, per_page: int = 50) -> list[
     return out
 
 
-def hh_source(profile: dict, **_) -> list[dict]:
+def hh_source(profile: dict, since_days: int = 2, **_) -> list[dict]:
     """Боевой источник HH через ОФИЦИАЛЬНЫЙ API (OAuth2).
 
-    Легально: своё приложение на dev.hh.ru → токен приложения (client_credentials) для
-    поиска, либо токен соискателя (authorization_code) для персонального поиска и откликов.
-    Поиск по GET /vacancies (с токеном — без капчи). Нет токена → исключение, которое
-    пайплайн ловит и просто пропускает HH-источник.
+    Легально: своё приложение на dev.hh.ru → токен соискателя (приоритет) или приложения.
+    Запрос строится по спецификации: поиск роли в названии, регион из профиля, свежие
+    вакансии за последние `since_days` дней (дедуп в пайплайне убирает уже виденные).
+
+    По городу: area берётся из profile.locations.hh_area_ids (1 = Москва). Формат «неважно» →
+    при необходимости добавим удалёнку через work_format (id из справочника) отдельной веткой.
     """
+    import datetime as _dt
     token = _hh_token()
     area = (profile.get("locations") or {}).get("hh_area_ids", [1])[0]
+    date_from = (_dt.date.today() - _dt.timedelta(days=since_days)).strftime("%Y-%m-%dT00:00:00")
     queries = [r["name"] for r in profile.get("target_roles", [])]
     seen, result = set(), []
     for q in dict.fromkeys(queries):
         try:
-            for vac in _hh_query(q, token, area=area):
+            for vac in _hh_query(q, token, area=area, date_from=date_from):
                 if vac["id"] not in seen:
                     seen.add(vac["id"])
                     result.append(vac)
