@@ -50,7 +50,7 @@ HH_QUERY = """={
   "only_with_salary": "false",
   "search_field": ["name"],
   "area": 1,
-  "date_from": "{{ $json.date }}T00:00:00",
+  "date_from": "{{ $('today').item.json.date }}T00:00:00",
   "order_by": "publication_time",
   "page": 0,
   "per_page": 100
