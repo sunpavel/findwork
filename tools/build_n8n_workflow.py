@@ -33,6 +33,7 @@ BROWSER_UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.3
               "(KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36")
 HH_CLIENT_ID = os.environ.get("HH_CLIENT_ID", "")
 HH_CLIENT_SECRET = os.environ.get("HH_CLIENT_SECRET", "")
+HH_STATIC_TOKEN = os.environ.get("HH_STATIC_TOKEN", "")  # если задан — минтить не будем
 _BASE_HEADERS = [
     {"name": "User-Agent", "value": BROWSER_UA},
     {"name": "HH-User-Agent", "value": "findwork/1.0 (sunpavel@mail.ru)"},
@@ -40,10 +41,6 @@ _BASE_HEADERS = [
     {"name": "Accept-Language", "value": "ru-RU,ru;q=0.9"},
 ]
 HH_HEADERS = {"parameters": _BASE_HEADERS}
-# Поиск идёт с авторизацией: Bearer-токен берётся из ноды «HH token».
-HH_SEARCH_HEADERS = {"parameters": _BASE_HEADERS + [
-    {"name": "Authorization", "value": "=Bearer {{ $('HH token').item.json.access_token }}"},
-]}
 
 HH_QUERY = """={
   "text": "%(role)s",
@@ -148,15 +145,21 @@ def build():
                         {"name": "client_id", "value": HH_CLIENT_ID},
                         {"name": "client_secret", "value": HH_CLIENT_SECRET}]},
                     "options": {}}, [-480, 30])
+    # Авторизация поиска: статический токен (если задан) либо из ноды «HH token».
+    if HH_STATIC_TOKEN:
+        auth = {"name": "Authorization", "value": "Bearer " + HH_STATIC_TOKEN}
+    else:
+        auth = {"name": "Authorization", "value": "=Bearer {{ $('HH token').item.json.access_token }}"}
+    search_headers = {"parameters": _BASE_HEADERS + [auth]}
     n_hh1 = node("HH Коммерческий директор", "n8n-nodes-base.httpRequest", 4.2,
                  {"url": "=https://api.hh.ru/vacancies", "sendQuery": True, "specifyQuery": "json",
                   "jsonQuery": HH_QUERY % {"role": "Коммерческий директор"},
-                  "sendHeaders": True, "headerParameters": HH_SEARCH_HEADERS,
+                  "sendHeaders": True, "headerParameters": search_headers,
                   "options": {}}, [-260, 80])
     n_hh2 = node("HH Директор по маркетингу", "n8n-nodes-base.httpRequest", 4.2,
                  {"url": "=https://api.hh.ru/vacancies", "sendQuery": True, "specifyQuery": "json",
                   "jsonQuery": HH_QUERY % {"role": "директор по маркетингу"},
-                  "sendHeaders": True, "headerParameters": HH_SEARCH_HEADERS,
+                  "sendHeaders": True, "headerParameters": search_headers,
                   "options": {}}, [-260, 280])
     # устойчивость к перемежающемуся 403 HH: ретраи + не ронять воркфлоу, если ветка не прошла
     for h in (n_hh1, n_hh2):
@@ -171,7 +174,9 @@ def build():
                  "additionalFields": {"appendAttribution": False}},
                 [480, 180], creds={"telegramApi": TELEGRAM_CRED})
 
-    nodes = [n_manual, n_sched, n_today, n_token, n_hh1, n_hh2, n_merge, n_score, n_tg]
+    nodes = [n_manual, n_sched, n_today, n_hh1, n_hh2, n_merge, n_score, n_tg]
+    if not HH_STATIC_TOKEN:
+        nodes.insert(3, n_token)  # минтим токен в воркфлоу
 
     def conn(a, b, idx=0):
         return {a["name"]: {"main": [[{"node": b["name"], "type": "main", "index": idx}]]}}
@@ -187,9 +192,13 @@ def build():
 
     add(n_manual, n_today)
     add(n_sched, n_today)
-    add(n_today, n_token)
-    add(n_token, n_hh1)
-    add(n_token, n_hh2)
+    if HH_STATIC_TOKEN:
+        add(n_today, n_hh1)
+        add(n_today, n_hh2)
+    else:
+        add(n_today, n_token)
+        add(n_token, n_hh1)
+        add(n_token, n_hh2)
     add(n_hh1, n_merge, in_idx=0)
     add(n_hh2, n_merge, in_idx=1)
     add(n_merge, n_score)
