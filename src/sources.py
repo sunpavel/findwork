@@ -90,24 +90,77 @@ def trudvsem_source(profile: dict, limit_per_query: int = 100, **_) -> list[dict
     return result
 
 
-def hh_source(profile: dict, **_) -> list[dict]:
-    """Боевой источник HH.
+HH_API = "https://api.hh.ru/vacancies"
 
-    ⚠️ Публичный API HH для соискателей закрыт (15.12.2025). Прямой api.hh.ru → 403.
-    Рабочий путь — эмуляция официального Android-приложения HH (как в утилите
-    `s3rgeym/hh-applicant-tool`), запускаемая с резидентного/российского IP (VPS в РФ).
 
-    План подключения (выполняется на VPS, где есть авторизация в HH):
-      1) pip install hh-applicant-tool
-      2) hh-applicant-tool authorize        # один раз, OAuth официального приложения
-      3) здесь — вызвать поиск через токен приложения и нормализовать ответ под схему выше.
+def _hh_token() -> str | None:
+    """Берёт access_token: из env HH_ACCESS_TOKEN или из конфига hh-applicant-tool."""
+    import os
+    if os.environ.get("HH_ACCESS_TOKEN"):
+        return os.environ["HH_ACCESS_TOKEN"]
+    cfg = Path.home() / ".config" / "hh-applicant-tool" / "config.json"
+    if cfg.exists():
+        data = json.loads(cfg.read_text(encoding="utf-8"))
+        tok = data.get("token") or {}
+        return tok.get("access_token") or data.get("access_token")
+    return None
 
-    Параметры поиска берём из profile['target_roles'] и profile['locations'].
-    Реализуется после поднятия VPS и авторизации (см. docs/vps_setup.md).
-    """
-    raise NotImplementedError(
-        "HH-источник подключается на VPS после авторизации (см. docstring и docs/vps_setup.md)."
+
+def _hh_query(text: str, token: str, area: int = 1, per_page: int = 50) -> list[dict]:
+    import os
+    ua = os.environ.get("HH_USER_AGENT", "findwork/1.0 (sunpavel@gmail.com)")
+    qs = urllib.parse.urlencode({"text": text, "area": area, "per_page": per_page, "page": 0})
+    req = urllib.request.Request(
+        f"{HH_API}?{qs}",
+        headers={"Authorization": f"Bearer {token}", "User-Agent": ua, "Accept": "application/json"},
     )
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        payload = json.loads(resp.read().decode("utf-8"))
+    out = []
+    for v in payload.get("items", []):
+        sn = v.get("snippet") or {}
+        sal = v.get("salary") or {}
+        out.append({
+            "id": f"hh-{v.get('id')}",
+            "title": v.get("name", ""),
+            "company": (v.get("employer") or {}).get("name", ""),
+            "url": v.get("alternate_url", ""),
+            "area": (v.get("area") or {}).get("name", ""),
+            "salary": {"from": sal.get("from"), "to": sal.get("to"),
+                       "currency": sal.get("currency") or "RUR"} if sal else None,
+            "published_at": v.get("published_at", ""),
+            "description": " ".join(filter(None, [sn.get("requirement"), sn.get("responsibility")])),
+        })
+    return out
+
+
+def hh_source(profile: dict, **_) -> list[dict]:
+    """Боевой источник HH (СЕРЫЙ путь).
+
+    ⚠️ Публичный API HH для соискателей закрыт (15.12.2025). Рабочий путь — токен
+    официального Android-приложения, который выдаёт `hh-applicant-tool authorize`
+    (запускается на VPS в РФ; см. docs/vps_setup.md). Поиск идёт по api.hh.ru с этим
+    токеном и app-User-Agent.
+
+    Если токена нет (не авторизован) — поднимаем исключение; пайплайн его поймает и
+    просто пропустит HH-источник, не падая.
+    """
+    token = _hh_token()
+    if not token:
+        raise RuntimeError("нет токена HH — выполни `hh-applicant-tool authorize` на VPS "
+                           "или задай HH_ACCESS_TOKEN (см. docs/vps_setup.md)")
+    area = (profile.get("locations") or {}).get("hh_area_ids", [1])[0]
+    queries = [r["name"] for r in profile.get("target_roles", [])]
+    seen, result = set(), []
+    for q in dict.fromkeys(queries):
+        try:
+            for vac in _hh_query(q, token, area=area):
+                if vac["id"] not in seen:
+                    seen.add(vac["id"])
+                    result.append(vac)
+        except Exception as e:  # noqa: BLE001
+            print(f"[hh] запрос '{q}' не удался: {e}")
+    return result
 
 
 _REGISTRY: dict[str, Callable[..., list[dict]]] = {

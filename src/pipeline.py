@@ -68,11 +68,33 @@ def build_digest(scored: list[tuple[dict, object]], limit: int) -> str:
     return "\n".join(lines)
 
 
+def collect(source_names: str, profile: dict) -> list[dict]:
+    """Собирает вакансии из одного или нескольких источников (через запятую).
+
+    Падение одного источника не роняет сбор — остальные отрабатывают. Дедуп по id
+    выполняется и между источниками.
+    """
+    names = [s.strip() for s in source_names.split(",") if s.strip()]
+    all_v, seen_ids = [], set()
+    for name in names:
+        try:
+            vs = get_source(name)(profile=profile)
+            print(f"  источник {name}: {len(vs)} вакансий")
+        except Exception as e:  # noqa: BLE001 — источник может быть не настроен (напр. hh без авторизации)
+            print(f"  источник {name}: пропущен ({e})")
+            continue
+        for v in vs:
+            if v["id"] not in seen_ids:
+                seen_ids.add(v["id"])
+                all_v.append(v)
+    return all_v
+
+
 def run(source_name: str, send: bool, dry_run: bool, limit: int) -> int:
     profile = load_profile()
     digest_threshold = profile["thresholds"]["digest"]
 
-    vacancies = get_source(source_name)(profile=profile)
+    vacancies = collect(source_name, profile)
     seen = _load_seen()
 
     scored = []
@@ -85,7 +107,7 @@ def run(source_name: str, send: bool, dry_run: bool, limit: int) -> int:
 
     scored.sort(key=lambda pair: pair[1].score, reverse=True)
 
-    print(f"Источник: {source_name} · всего {len(vacancies)} · новых релевантных: {len(scored)}")
+    print(f"Источники: {source_name} · всего {len(vacancies)} · новых релевантных: {len(scored)}")
     if not scored:
         print("Новых релевантных вакансий нет — дайджест не отправляется.")
         return 0
@@ -108,7 +130,8 @@ def run(source_name: str, send: bool, dry_run: bool, limit: int) -> int:
 
 def main() -> int:
     p = argparse.ArgumentParser(description="Утренний дайджест вакансий findwork")
-    p.add_argument("--source", default="sample", help="источник: sample | hh")
+    p.add_argument("--source", default="sample",
+                   help="источник(и) через запятую: sample | trudvsem | hh | 'trudvsem,hh'")
     p.add_argument("--send", action="store_true", help="отправить дайджест в Telegram")
     p.add_argument("--dry-run", action="store_true", help="не менять состояние и не отправлять")
     p.add_argument("--limit", type=int, default=10, help="сколько вакансий в дайджест")
