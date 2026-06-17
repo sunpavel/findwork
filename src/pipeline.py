@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import html
 import json
 from pathlib import Path
 
@@ -54,17 +55,21 @@ def _fmt_salary(salary: dict | None) -> str:
 
 
 def build_digest(scored: list[tuple[dict, object]], limit: int) -> str:
+    """Собирает дайджест в HTML (parse_mode=HTML). Динамические поля экранируем —
+    иначе спецсимволы в названиях вакансий (`_`, `<`, `&` ...) ломают отправку."""
+    e = html.escape
     today = dt.date.today().strftime("%d.%m.%Y")
-    lines = [f"*🗞 Вакансии на {today}* — {min(len(scored), limit)} релевантных\n"]
+    lines = [f"<b>🗞 Вакансии на {today}</b> — {min(len(scored), limit)} релевантных\n"]
     for vac, res in scored[:limit]:
-        matched = ", ".join(res.matched_skills[:6]) or "—"
+        matched = e(", ".join(res.matched_skills[:6]) or "—")
         lines.append(
-            f"*{res.score}/100* · {vac['title']}\n"
-            f"🏢 {vac.get('company', '—')} · 📍 {vac.get('area', '—')} · 💰 {_fmt_salary(vac.get('salary'))}\n"
-            f"🎯 роль: {res.best_role} · ✓ {matched}\n"
-            f"🔗 {vac.get('url', '')}\n"
+            f"<b>{res.score}/100</b> · {e(vac.get('title', ''))}\n"
+            f"🏢 {e(vac.get('company') or '—')} · 📍 {e(vac.get('area') or '—')} · "
+            f"💰 {e(_fmt_salary(vac.get('salary')))}\n"
+            f"🎯 роль: {e(res.best_role)} · ✓ {matched}\n"
+            f"🔗 {e(vac.get('url', ''))}\n"
         )
-    lines.append("_Ответь номером/ссылкой «резюме» или «отклик» — подготовлю._")
+    lines.append("<i>Ответь номером/ссылкой «резюме» или «отклик» — подготовлю.</i>")
     return "\n".join(lines)
 
 
@@ -116,7 +121,7 @@ def run(source_name: str, send: bool, dry_run: bool, limit: int) -> int:
     print("\n" + digest + "\n")
 
     if send and not dry_run:
-        ok = send_telegram(digest)
+        ok = send_telegram(digest, parse_mode="HTML")
         print("Telegram: отправлено" if ok else "Telegram: не отправлено")
 
     if not dry_run:
