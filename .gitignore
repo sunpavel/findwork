@@ -1,6 +1,8 @@
 # секреты — НИКОГДА не коммитим (токены Telegram, ключи HH, OAuth и т.п.)
 .env
 .env.*
+# шаблон без секретов — он, наоборот, должен быть в репозитории
+!.env.example
 *.secret
 secrets/
 credentials*.json
