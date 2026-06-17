@@ -163,89 +163,125 @@ def _pick_base_resume_id() -> str:
     return resumes[0]["id"]
 
 
-def apply_to(url_or_id: str, *, dry_run: bool = False,
-             min_score: int | None = None) -> ApplyResult:
-    """Полный цикл отклика под одну вакансию. Возвращает ApplyResult.
+@dataclass
+class Prepared:
+    """Подготовленный, но ещё НЕ отправленный отклик (для подтверждения в боте)."""
+    vacancy_id: str
+    title: str = ""
+    company: str = ""
+    score: int | None = None
+    resume_overrides: dict = field(default_factory=dict)
+    cover_letter: str = ""
+    tailor_source: str = ""
+    blocked: bool = False          # нельзя отправлять (пауза/дубль/лимит/порог)
+    block_reason: str = ""
+    notes: list[str] = field(default_factory=list)
 
-    min_score — не откликаться, если скор ниже порога (None = без фильтра здесь).
+
+def _guard(vid: str) -> tuple[bool, str]:
+    """Проверка контроля перед подготовкой/отправкой. (blocked, reason)."""
+    if is_paused():
+        return True, "⏸ Бот на паузе (/resume чтобы снять)."
+    if _already_applied(vid):
+        return True, "↩️ На эту вакансию уже откликались — пропуск."
+    limit = daily_limit()
+    if _applied_today_count() >= limit:
+        return True, f"🚦 Достигнут дневной лимит откликов ({limit})."
+    return False, ""
+
+
+def prepare(url_or_id: str, *, min_score: int | None = None) -> Prepared:
+    """Готовит материалы под вакансию HH (скоринг + резюме + письмо), НЕ отправляя.
+
+    Используется ботом, чтобы показать письмо и спросить подтверждение.
     """
     vid = hh_app.parse_vacancy_id(url_or_id)
-    res = ApplyResult(ok=False, vacancy_id=vid)
+    p = Prepared(vacancy_id=vid)
 
-    # 0) контроль
-    if is_paused():
-        res.message = "⏸ Бот на паузе (/resume чтобы снять)."
-        return res
-    if _already_applied(vid):
-        res.message = "↩️ На эту вакансию уже откликались — пропуск."
-        res.notes.append("дубль")
-        return res
-    limit = daily_limit()
-    if not dry_run and _applied_today_count() >= limit:
-        res.message = f"🚦 Достигнут дневной лимит откликов ({limit}). Отклик отложен."
-        return res
+    blocked, reason = _guard(vid)
+    if blocked:
+        p.blocked, p.block_reason = True, reason
+        return p
 
-    # 1) вакансия
     vacancy = hh_app.get_vacancy(vid)
-    res.title = vacancy.get("name", "")
-    res.company = (vacancy.get("employer") or {}).get("name", "")
+    p.title = vacancy.get("name", "")
+    p.company = (vacancy.get("employer") or {}).get("name", "")
 
-    # 2) скоринг
     profile = load_profile()
     title, text = _vacancy_text(vacancy)
     score = score_vacancy(title, text, _vacancy_salary(vacancy), profile)
-    res.score = score.score
+    p.score = score.score
     if min_score is not None and score.score < min_score:
-        res.message = (f"🔻 Скор {score.score}/100 ниже порога {min_score} — отклик не отправлен.")
-        res.notes.append("ниже порога")
+        p.blocked = True
+        p.block_reason = f"🔻 Скор {score.score}/100 ниже порога {min_score}."
+        return p
+
+    tr = tailor_mod.tailor(vacancy, score_hint=score.explain(),
+                           matched_skills=score.matched_skills)
+    p.resume_overrides = tr.resume_overrides
+    p.cover_letter = tr.cover_letter
+    p.tailor_source = tr.source
+    p.notes += tr.notes
+    return p
+
+
+def commit(p: Prepared) -> ApplyResult:
+    """Отправляет подготовленный отклик: создаёт/правит резюме и шлёт /negotiations."""
+    res = ApplyResult(ok=False, vacancy_id=p.vacancy_id, title=p.title,
+                      company=p.company, score=p.score,
+                      cover_letter=p.cover_letter, tailor_source=p.tailor_source)
+    # повторная проверка контроля на момент отправки
+    blocked, reason = _guard(p.vacancy_id)
+    if blocked:
+        res.message = reason
         return res
 
-    # 3) адаптация резюме + сопроводительное
-    tr = tailor_mod.tailor(
-        vacancy,
-        score_hint=score.explain(),
-        matched_skills=score.matched_skills,
-    )
-    res.cover_letter = tr.cover_letter
-    res.tailor_source = tr.source
-    res.notes += tr.notes
-
-    if dry_run:
-        res.ok = True
-        res.message = (f"[dry-run] Готов отклик: {res.title} — {res.company} "
-                       f"(скор {score.score}). Резюме и отправка не выполнялись.")
-        return res
-
-    # 4) резюме под вакансию
     mode = os.environ.get("APPLY_RESUME_MODE", "clone").lower()
     base_id = _pick_base_resume_id()
     if mode == "existing":
         resume_id = base_id
         res.notes.append("режим existing — базовое резюме без правок")
     elif mode == "update":
-        hh_app.update_resume(base_id, tr.resume_overrides)
+        hh_app.update_resume(base_id, p.resume_overrides)
         resume_id = base_id
         res.notes.append("режим update — базовое резюме обновлено под вакансию")
     else:  # clone
-        resume_id = hh_app.clone_resume(base_id, tr.resume_overrides)
+        resume_id = hh_app.clone_resume(base_id, p.resume_overrides)
         res.notes.append(f"режим clone — создано резюме {resume_id} под вакансию")
     res.resume_id = resume_id
 
-    # вежливая пауза перед действием, чтобы не выглядеть ботом-спамером
-    time.sleep(float(os.environ.get("APPLY_PAUSE_SEC", "2")))
+    time.sleep(float(os.environ.get("APPLY_PAUSE_SEC", "2")))  # вежливая пауза
+    hh_app.apply_to_vacancy(p.vacancy_id, resume_id, p.cover_letter)
 
-    # 5) отклик
-    hh_app.apply_to_vacancy(vid, resume_id, tr.cover_letter)
-
-    # 6) лог
     _append_log({
-        "status": "applied", "vacancy_id": vid, "title": res.title,
-        "company": res.company, "score": score.score, "resume_id": resume_id,
-        "tailor": tr.source, "mode": mode,
+        "status": "applied", "vacancy_id": p.vacancy_id, "title": p.title,
+        "company": p.company, "score": p.score, "resume_id": resume_id,
+        "tailor": p.tailor_source, "mode": mode,
     })
     res.ok = True
-    res.message = (f"✅ Отклик отправлен: {res.title} — {res.company} "
-                   f"(скор {score.score}, резюме {resume_id}, текст: {tr.source}).")
+    res.message = (f"✅ Отклик отправлен: {p.title} — {p.company} "
+                   f"(скор {p.score}, резюме {resume_id}, текст: {p.tailor_source}).")
+    return res
+
+
+def apply_to(url_or_id: str, *, dry_run: bool = False,
+             min_score: int | None = None) -> ApplyResult:
+    """Полный цикл отклика под одну вакансию (CLI/прямой авто-режим)."""
+    p = prepare(url_or_id, min_score=min_score)
+    if p.blocked:
+        return ApplyResult(ok=False, vacancy_id=p.vacancy_id, title=p.title,
+                           company=p.company, score=p.score,
+                           cover_letter=p.cover_letter, tailor_source=p.tailor_source,
+                           message=p.block_reason, notes=p.notes)
+    if dry_run:
+        return ApplyResult(
+            ok=True, vacancy_id=p.vacancy_id, title=p.title, company=p.company,
+            score=p.score, cover_letter=p.cover_letter, tailor_source=p.tailor_source,
+            message=(f"[dry-run] Готов отклик: {p.title} — {p.company} "
+                     f"(скор {p.score}). Резюме и отправка не выполнялись."),
+            notes=p.notes)
+    res = commit(p)
+    res.notes = p.notes + res.notes
     return res
 
 
