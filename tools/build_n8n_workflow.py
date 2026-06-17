@@ -139,15 +139,20 @@ for(let i=0;i<fulls.length;i++){
 rows.sort((a,b)=>b.score-a.score);
 if(rows.length===0) return [];
 const today=new Date().toLocaleDateString('ru-RU');
-let L=['🗞 Вакансии на '+today+' — '+rows.length+' новых релевантных',''];
-for(const v of rows){
-  L.push(v.score+'/100 · '+v.name);
-  L.push('🏢 '+(v.company||'—')+' · 📍 '+(v.area||'—')+' · 💰 '+fmtSal(v.salary));
-  if(v.reason) L.push('💡 '+v.reason);
-  else L.push('🎯 '+v.best_role+' · ✓ '+(v.matched||[]).join(', '));
-  L.push('🔗 '+(v.url||'')); L.push('');
-}
-return [{ json: { digest: L.join('\n'), count: rows.length } }];
+const header='🗞 Вакансии на '+today+' — '+rows.length+' новых релевантных\n';
+const blocks=rows.map(v=>{
+  let b=v.score+'/100 · '+v.name+'\n';
+  b+='🏢 '+(v.company||'—')+' · 📍 '+(v.area||'—')+' · 💰 '+fmtSal(v.salary)+'\n';
+  if(v.reason) b+='💡 '+v.reason.slice(0,220)+'\n';
+  else b+='🎯 '+v.best_role+' · ✓ '+(v.matched||[]).join(', ')+'\n';
+  b+='🔗 '+(v.url||'')+'\n';
+  return b;
+});
+// Telegram: лимит 4096 символов → пакуем блоки в сообщения <= 3800
+const LIMIT=3800; const msgs=[]; let cur=header;
+for(const b of blocks){ if((cur+'\n'+b).length>LIMIT){ msgs.push(cur); cur=b; } else { cur+='\n'+b; } }
+if(cur.trim()) msgs.push(cur);
+return msgs.map(m=>({ json: { digest: m, count: rows.length } }));
 '''
 
 LLM_PROMPT = ("=Ты — HR-эксперт по подбору топ-менеджеров. В 1–2 предложениях (до 280 символов, "
