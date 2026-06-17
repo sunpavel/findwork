@@ -189,7 +189,8 @@ def build():
                    {"rule": {"interval": [{"field": "cronExpression", "expression": "0 9 * * *"}]}},
                    [-1000, 260])
     n_today = node("today", "n8n-nodes-base.code", 2,
-                   {"jsCode": "return [{json:{date:new Date().toISOString().slice(0,10)}}];"}, [-800, 170])
+                   {"jsCode": "const d=new Date(Date.now()-3*86400000);\n"
+                              "return [{json:{date:d.toISOString().slice(0,10)}}];"}, [-800, 170])
     n_mint = node("HH token", "n8n-nodes-base.httpRequest", 4.2,
                   {"method": "POST", "url": "=https://api.hh.ru/token",
                    "sendHeaders": True, "headerParameters": HH_HEADERS,
