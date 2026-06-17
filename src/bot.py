@@ -44,7 +44,7 @@ HELP = (
     "перед откликом.\n"
     "• Пришли *ссылку facancy.ru* (или другого сайта) → пришлю тебе резюме и письмо, "
     "отклик сделаешь сам на сайте.\n\n"
-    "Команды: /status · /pause · /resume · /dry <ссылка> · /help"
+    "Команды: /health · /status · /pause · /resume · /dry <ссылка> · /help"
 )
 
 # token -> apply_mod.Prepared (ожидают подтверждения кнопкой)
@@ -199,6 +199,52 @@ def _handle_assist(chat_id, url: str) -> None:
     send(chat_id, text)
 
 
+# --- здоровье/диагностика -----------------------------------------------------
+
+def _health_text() -> str:
+    """Что подключено: Telegram / Anthropic / HH — видно прямо в чате."""
+    lines = ["🩺 *Проверка подключений*", ""]
+
+    # Telegram — если это сообщение дошло, значит работает.
+    lines.append("• Telegram: ✅ бот отвечает")
+
+    # Anthropic (качество писем).
+    key = bool(os.environ.get("ANTHROPIC_API_KEY"))
+    try:
+        import anthropic  # noqa: F401, PLC0415
+        sdk = True
+    except Exception:  # noqa: BLE001
+        sdk = False
+    if key and sdk:
+        lines.append("• Anthropic (письма): ✅ ключ и SDK на месте")
+    elif key and not sdk:
+        lines.append("• Anthropic (письма): ⚠️ ключ есть, нет пакета `anthropic` → "
+                     "письма по шаблону (`pip install -r requirements.txt`)")
+    else:
+        lines.append("• Anthropic (письма): ⚠️ ключ не задан → письма по шаблону")
+
+    # HH — токен приложения (серый путь, нужен для откликов).
+    try:
+        me = hh_app.whoami()
+        name = f"{me.get('first_name', '')} {me.get('last_name', '')}".strip() or me.get("id", "?")
+        n_res = len(hh_app.list_resumes())
+        lines.append(f"• HH (отклики): ✅ авторизован как {name}, резюме: {n_res}")
+    except hh_app.HHAppError as e:
+        if e.status:
+            lines.append(f"• HH (отклики): ❌ HTTP {e.status} — токен есть, но запрос отклонён")
+        else:
+            lines.append("• HH (отклики): ❌ не авторизовано — выполни "
+                         "`hh-applicant-tool authorize` (см. docs/QUICKSTART.md)")
+    except Exception as e:  # noqa: BLE001
+        lines.append(f"• HH (отклики): ❌ {e}")
+
+    paused = "⏸ да" if apply_mod.is_paused() else "▶️ нет"
+    lines.append("")
+    lines.append(f"Пауза: {paused} · лимит/день: {apply_mod.daily_limit()} · "
+                 f"ждут подтверждения: {len(_PENDING)}")
+    return "\n".join(lines)
+
+
 # --- роутинг ------------------------------------------------------------------
 
 def _handle_message(msg: dict) -> None:
@@ -213,6 +259,11 @@ def _handle_message(msg: dict) -> None:
 
     if text in ("/start", "/help"):
         send(chat_id, HELP)
+    elif text == "/health":
+        try:
+            send(chat_id, _health_text())
+        except Exception as e:  # noqa: BLE001
+            send(chat_id, f"❌ /health: {e}")
     elif text == "/status":
         import io
         import contextlib

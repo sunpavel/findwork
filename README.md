@@ -52,6 +52,8 @@
 
 ## Запуск
 
+> Пошаговая настройка (Telegram → авторизация HH → `.env` → бот на VPS) — **[docs/QUICKSTART.md](docs/QUICKSTART.md)**.
+
 ```bash
 python3 src/relevance.py                          # демо скоринга
 python3 src/pipeline.py --source sample --dry-run  # дайджест на тестовых вакансиях (без отправки)
