@@ -240,8 +240,17 @@ def build():
             m.append([])
         m[0].append({"node": b["name"], "type": "main", "index": in_idx})
 
+    if os.environ.get("ADD_WEBHOOK"):
+        n_wh = node("Webhook test", "n8n-nodes-base.webhook", 2,
+                    {"httpMethod": "GET", "path": "findwork-run-7x", "responseMode": "lastNode"},
+                    [-1000, 440], extra={"webhookId": nid()})
+        nodes.append(n_wh)
+
     add(n_manual, n_today)
     add(n_sched, n_today)
+    if os.environ.get("ADD_WEBHOOK"):
+        connections.setdefault("Webhook test", {}).setdefault("main", [[]])[0].append(
+            {"node": "today", "type": "main", "index": 0})
     add(n_today, n_mint)
     add(n_mint, n_pick)
     add(n_pick, n_hh1)
