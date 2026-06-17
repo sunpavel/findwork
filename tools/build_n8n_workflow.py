@@ -167,6 +167,58 @@ LLM_PROMPT = ("=Ты — HR-эксперт по подбору топ-менед
               "Ключевые навыки: {{ ($json.key_skills || []).map(k => k.name).join(', ') }}\n"
               "Описание: {{ ($json.description || '').replace(/<[^>]+>/g,' ').slice(0, 1500) }}")
 
+# facancy.ru: сбор по API (/api/v1/vacancies?page=N) + фильтр 450к/без вилки + скоринг + дедуп
+FAC_FETCH_GLUE = r'''
+const UA='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36';
+const PAGES=12; let all=[];
+for(let p=1;p<=PAGES;p++){
+  let resp; try{ resp=await this.helpers.httpRequest({url:'https://facancy.ru/api/v1/vacancies?page='+p,
+    headers:{'User-Agent':UA,'Accept':'application/json'}, json:true}); }catch(e){ break; }
+  const data=(resp&&resp.data)||[]; if(!data.length) break; all=all.concat(data);
+}
+const store=$getWorkflowStaticData('global'); const sent=new Set(store.sent_ids||[]);
+const uniq=new Set(); const rel=[];
+for(const v of all){
+  if(v.is_outdated||v.is_removed_from_publication) continue;  // is_filled ≠ «закрыта», не фильтруем
+  const be=(v.salary&&v.salary.by_employer)||null;
+  const salary=be&&(be.min||be.max)?{from:be.min,to:be.max,currency:'RUR'}:null;
+  const top=salary?(salary.to||salary.from):null;
+  if(top!==null && top<450000) continue;                 // от 450к ИЛИ без вилки
+  const id='fac-'+v.id; const desc=strip(v.text);
+  const r=scoreVac(v.title, desc, salary);
+  if(r.score>=PROFILE.thresholds.digest && !uniq.has(id)){ uniq.add(id);
+    rel.push({id, source:'facancy', name:v.title, area:v.city||'', salary,
+      url:'https://facancy.ru/vacancies/'+v.slug, description:desc,
+      score:r.score, best_role:r.best_role, matched:r.matched}); }
+}
+rel.sort((a,b)=>b.score-a.score);
+const fresh=rel.filter(v=>!sent.has(v.id)).slice(0,10);
+for(const v of fresh) sent.add(v.id);
+store.sent_ids=Array.from(sent).slice(-8000);
+return fresh.map(v=>({json:v}));
+'''
+
+FAC_BUILD_GLUE = r'''
+const items=$('facancy: сбор+скоринг').all();
+let llms=[]; try{ llms=$('facancy: LLM').all(); }catch(e){}
+const rows=[];
+for(let i=0;i<items.length;i++){ const v=items[i].json||{};
+  let reason=''; try{ const lj=(llms[i]&&llms[i].json)||{}; reason=strip((lj.message&&lj.message.content)||lj.text||lj.content||''); }catch(e){}
+  rows.push(Object.assign({}, v, {reason})); }
+rows.sort((a,b)=>b.score-a.score);
+if(rows.length===0) return [];
+const today=new Date().toLocaleDateString('ru-RU');
+const header='🗞 facancy.ru на '+today+' — '+rows.length+' новых релевантных\n';
+const blocks=rows.map(v=>{ let b=v.score+'/100 · '+v.name+'\n';
+  b+='🏢 facancy.ru · 📍 '+(v.area||'—')+' · 💰 '+fmtSal(v.salary)+'\n';
+  if(v.reason) b+='💡 '+v.reason.slice(0,220)+'\n'; else b+='🎯 '+v.best_role+'\n';
+  b+='🔗 '+(v.url||'')+'\n'; return b; });
+const LIMIT=3800; const msgs=[]; let cur=header;
+for(const b of blocks){ if((cur+'\n'+b).length>LIMIT){ msgs.push(cur); cur=b; } else { cur+='\n'+b; } }
+if(cur.trim()) msgs.push(cur);
+return msgs.map(m=>({ json: { digest: m, count: rows.length } }));
+'''
+
 
 def nid():
     return str(uuid.uuid4())
@@ -230,8 +282,25 @@ def build():
                  "additionalFields": {"appendAttribution": False}},
                 [780, 260], creds={"telegramApi": TELEGRAM_CRED})
 
+    # --- независимая ветка facancy.ru ---
+    n_fac = node("facancy: сбор+скоринг", "n8n-nodes-base.code", 2,
+                 {"jsCode": (SCORE_FUNCS + FAC_FETCH_GLUE).replace("__PROFILE__", PJSON)},
+                 [-20, 560], extra=cont)
+    n_fac_llm = node("facancy: LLM", "@n8n/n8n-nodes-langchain.openAi", 1.8,
+                     {"modelId": {"__rl": True, "value": "gpt-4.1-nano", "mode": "list",
+                                  "cachedResultName": "GPT-4.1-NANO"},
+                      "messages": {"values": [{"content": LLM_PROMPT}]}, "options": {}},
+                     [380, 560], creds={"openAiApi": OPENAI_CRED}, extra=cont)
+    n_fac_build = node("facancy: дайджест", "n8n-nodes-base.code", 2,
+                       {"jsCode": (SCORE_FUNCS + FAC_BUILD_GLUE).replace("__PROFILE__", PJSON)}, [580, 560])
+    n_fac_tg = node("Telegram facancy", "n8n-nodes-base.telegram", 1.2,
+                    {"chatId": "=" + CHAT_ID, "text": "={{ $json.digest }}",
+                     "additionalFields": {"appendAttribution": False}},
+                    [780, 560], creds={"telegramApi": TELEGRAM_CRED})
+
     nodes = [n_manual, n_sched, n_today, n_mint, n_pick, n_hh1, n_hh2, n_merge,
-             n_list, n_getvac, n_llm, n_build, n_tg]
+             n_list, n_getvac, n_llm, n_build, n_tg,
+             n_fac, n_fac_llm, n_fac_build, n_fac_tg]
     connections = {}
 
     def add(a, b, in_idx=0):
@@ -264,6 +333,11 @@ def build():
     add(n_getvac, n_llm)
     add(n_llm, n_build)
     add(n_build, n_tg)
+    # facancy-ветка (параллельно HH)
+    add(n_today, n_fac)
+    add(n_fac, n_fac_llm)
+    add(n_fac_llm, n_fac_build)
+    add(n_fac_build, n_fac_tg)
 
     return {"name": "hh.ru — findwork (скоринг)", "nodes": nodes, "connections": connections,
             "settings": {"executionOrder": "v1", "timezone": "Europe/Moscow"}}
