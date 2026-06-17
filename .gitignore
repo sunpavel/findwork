@@ -1,0 +1,23 @@
+# секреты — НИКОГДА не коммитим (токены Telegram, ключи HH, OAuth и т.п.)
+.env
+.env.*
+*.secret
+secrets/
+credentials*.json
+*token*.txt
+
+# состояние пайплайна
+state/
+*.sqlite
+*.db
+seen_vacancies.json
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# прочее
+.DS_Store
+*.log
