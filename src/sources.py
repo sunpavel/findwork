@@ -90,30 +90,73 @@ def trudvsem_source(profile: dict, limit_per_query: int = 100, **_) -> list[dict
     return result
 
 
-HH_API = "https://api.hh.ru/vacancies"
+HH_API_BASE = "https://api.hh.ru"
+STATE_DIR = Path(__file__).resolve().parent.parent / "state"
 
 
-def _hh_token() -> str | None:
-    """Берёт access_token: из env HH_ACCESS_TOKEN или из конфига hh-applicant-tool."""
+def _hh_user_agent() -> str:
+    import os
+    return os.environ.get("HH_USER_AGENT", "findwork/1.0 (sunpavel@gmail.com)")
+
+
+def _hh_app_token() -> str | None:
+    """Токен ПРИЛОЖЕНИЯ (grant_type=client_credentials) — для поиска вакансий без логина.
+    Полностью официально. Нужны HH_CLIENT_ID/HH_CLIENT_SECRET из https://dev.hh.ru/admin.
+    Кэшируем в state/hh_app_token.json до истечения."""
+    import os
+    import time
+    cid, secret = os.environ.get("HH_CLIENT_ID"), os.environ.get("HH_CLIENT_SECRET")
+    if not (cid and secret):
+        return None
+    cache = STATE_DIR / "hh_app_token.json"
+    if cache.exists():
+        data = json.loads(cache.read_text(encoding="utf-8"))
+        if data.get("expires_at", 0) > time.time() + 60:
+            return data.get("access_token")
+    body = urllib.parse.urlencode({
+        "grant_type": "client_credentials", "client_id": cid, "client_secret": secret,
+    }).encode()
+    req = urllib.request.Request(
+        f"{HH_API_BASE}/token", data=body,
+        headers={"HH-User-Agent": _hh_user_agent(),
+                 "Content-Type": "application/x-www-form-urlencoded"})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        tok = json.loads(resp.read().decode("utf-8"))
+    STATE_DIR.mkdir(exist_ok=True)
+    tok["expires_at"] = time.time() + tok.get("expires_in", 3600)
+    cache.write_text(json.dumps(tok), encoding="utf-8")
+    return tok.get("access_token")
+
+
+def _hh_user_token() -> str | None:
+    """Токен СОИСКАТЕЛЯ (authorization_code) — для персонального поиска и откликов.
+    Из env HH_ACCESS_TOKEN или из state/hh_token.json (см. src/hh_auth.py)."""
     import os
     if os.environ.get("HH_ACCESS_TOKEN"):
         return os.environ["HH_ACCESS_TOKEN"]
-    cfg = Path.home() / ".config" / "hh-applicant-tool" / "config.json"
-    if cfg.exists():
-        data = json.loads(cfg.read_text(encoding="utf-8"))
-        tok = data.get("token") or {}
-        return tok.get("access_token") or data.get("access_token")
+    tf = STATE_DIR / "hh_token.json"
+    if tf.exists():
+        return json.loads(tf.read_text(encoding="utf-8")).get("access_token")
     return None
 
 
+def _hh_token() -> str:
+    """Приоритет: токен соискателя (персональный поиск + отклики) → токен приложения (поиск)."""
+    tok = _hh_user_token() or _hh_app_token()
+    if not tok:
+        raise RuntimeError(
+            "нет токена HH. Для поиска: зарегистрируй приложение на https://dev.hh.ru/admin и "
+            "задай HH_CLIENT_ID/HH_CLIENT_SECRET в .env. Для откликов/персонального поиска: "
+            "авторизуйся `python3 src/hh_auth.py`. См. docs/hh_api.md")
+    return tok
+
+
 def _hh_query(text: str, token: str, area: int = 1, per_page: int = 50) -> list[dict]:
-    import os
-    ua = os.environ.get("HH_USER_AGENT", "findwork/1.0 (sunpavel@gmail.com)")
     qs = urllib.parse.urlencode({"text": text, "area": area, "per_page": per_page, "page": 0})
     req = urllib.request.Request(
-        f"{HH_API}?{qs}",
-        headers={"Authorization": f"Bearer {token}", "User-Agent": ua, "Accept": "application/json"},
-    )
+        f"{HH_API_BASE}/vacancies?{qs}",
+        headers={"Authorization": f"Bearer {token}", "HH-User-Agent": _hh_user_agent(),
+                 "Accept": "application/json"})
     with urllib.request.urlopen(req, timeout=30) as resp:
         payload = json.loads(resp.read().decode("utf-8"))
     out = []
@@ -135,20 +178,14 @@ def _hh_query(text: str, token: str, area: int = 1, per_page: int = 50) -> list[
 
 
 def hh_source(profile: dict, **_) -> list[dict]:
-    """Боевой источник HH (СЕРЫЙ путь).
+    """Боевой источник HH через ОФИЦИАЛЬНЫЙ API (OAuth2).
 
-    ⚠️ Публичный API HH для соискателей закрыт (15.12.2025). Рабочий путь — токен
-    официального Android-приложения, который выдаёт `hh-applicant-tool authorize`
-    (запускается на VPS в РФ; см. docs/vps_setup.md). Поиск идёт по api.hh.ru с этим
-    токеном и app-User-Agent.
-
-    Если токена нет (не авторизован) — поднимаем исключение; пайплайн его поймает и
-    просто пропустит HH-источник, не падая.
+    Легально: своё приложение на dev.hh.ru → токен приложения (client_credentials) для
+    поиска, либо токен соискателя (authorization_code) для персонального поиска и откликов.
+    Поиск по GET /vacancies (с токеном — без капчи). Нет токена → исключение, которое
+    пайплайн ловит и просто пропускает HH-источник.
     """
     token = _hh_token()
-    if not token:
-        raise RuntimeError("нет токена HH — выполни `hh-applicant-tool authorize` на VPS "
-                           "или задай HH_ACCESS_TOKEN (см. docs/vps_setup.md)")
     area = (profile.get("locations") or {}).get("hh_area_ids", [1])[0]
     queries = [r["name"] for r in profile.get("target_roles", [])]
     seen, result = set(), []

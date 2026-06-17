@@ -58,8 +58,8 @@ text(W / 2, 66, "сбор → скоринг релевантности → ут
 # --- источники ---
 rect(40, 90, 1080, 96, *BAND)
 text(60, 112, "Источники вакансий", size=13, weight="700", fill="#475569", anchor="start")
-box(60, 122, 240, 50, ["Trudvsem API  ✓", "офиц., бесплатно, легально"], GREEN, size=13)
-box(320, 122, 240, 50, ["HH  ⚠", "эмуляция приложения"], AMBER, size=13)
+box(60, 122, 240, 50, ["HH.ru — официальный OAuth  ✓", "своё приложение, легально"], GREEN, size=12)
+box(320, 122, 240, 50, ["Vacancy.ru", "(уточняется)"], WHITE, size=13)
 box(580, 122, 240, 50, ["Хабр Карьера / getmatch"], WHITE, size=13)
 box(840, 122, 240, 50, ["Telegram-каналы вакансий"], WHITE, size=13)
 
@@ -87,13 +87,13 @@ for bx in (220, 580, 940):
     parts.append(f'<line x1="{bx}" y1="560" x2="{bx}" y2="582" stroke="#64748b" '
                  f'stroke-width="2" marker-end="url(#a)"/>')
 box(100, 582, 240, 56, ["📝 Резюме под вакансию", "tailor.py + LLM"], WHITE, size=13)
-box(460, 582, 240, 56, ["✅ Подтверждение → 📤 Отклик", "полу-авто, лимиты/паузы"], AMBER, size=13)
+box(460, 582, 240, 56, ["✅ Подтверждение → 📤 Отклик", "официальный API, с лимитами"], BLUE, size=13)
 box(820, 582, 240, 56, ["✖ Пропустить"], WHITE, size=13)
 
 # к площадке
 arrow(340, 610, 458, 610)
 arrow(580, 638, 580, 662)
-box(460, 662, 240, 46, ["🌐 HH / площадка"], AMBER, size=13)
+box(460, 662, 240, 46, ["🌐 HH.ru (POST /negotiations)"], GREEN, size=12)
 arrow(580, 708, 580, 730)
 box(460, 730, 240, 46, ["📱 Павел (Telegram)"], BLUE, size=13)
 
@@ -104,10 +104,10 @@ text(W / 2, 826, "🖥  Всё на VPS в РФ (резидентный IP)     
      size=13, weight="600", fill="#475569")
 
 # легенда
-text(60, 786, "🟢 готово / легально и безопасно", size=12, fill="#28a745", anchor="start", weight="600")
-text(360, 786, "🟡 «серый» путь — риск бана, только под подтверждением", size=12,
-     fill="#b8860b", anchor="start", weight="600")
-text(820, 786, "🔵 опционально / интерактив", size=12, fill="#0d6efd", anchor="start", weight="600")
+text(60, 786, "🟢 легально / готово", size=12, fill="#28a745", anchor="start", weight="600")
+text(300, 786, "⚪ требует ключей / уточнения", size=12, fill="#475569", anchor="start", weight="600")
+text(640, 786, "🔵 интерактив — отклик только с подтверждением", size=12,
+     fill="#0d6efd", anchor="start", weight="600")
 
 parts.append("</svg>")
 OUT.write_text("\n".join(parts), encoding="utf-8")

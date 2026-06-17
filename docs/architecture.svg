@@ -6,11 +6,11 @@
 <rect x="40" y="90" width="1080" height="96" rx="10" fill="#eef2f7" stroke="#cbd5e1" stroke-width="2"/>
 <text x="60" y="112" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="700" fill="#475569" text-anchor="start">Источники вакансий</text>
 <rect x="60" y="122" width="240" height="50" rx="10" fill="#d4edda" stroke="#28a745" stroke-width="2"/>
-<text x="180.0" y="143.0" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2937" text-anchor="middle">Trudvsem API  ✓</text>
-<text x="180.0" y="160.0" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="normal" fill="#1f2937" text-anchor="middle">офиц., бесплатно, легально</text>
-<rect x="320" y="122" width="240" height="50" rx="10" fill="#fff3cd" stroke="#e0a800" stroke-width="2"/>
-<text x="440.0" y="143.0" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2937" text-anchor="middle">HH  ⚠</text>
-<text x="440.0" y="160.0" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="normal" fill="#1f2937" text-anchor="middle">эмуляция приложения</text>
+<text x="180.0" y="143.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="600" fill="#1f2937" text-anchor="middle">HH.ru — официальный OAuth  ✓</text>
+<text x="180.0" y="159.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="normal" fill="#1f2937" text-anchor="middle">своё приложение, легально</text>
+<rect x="320" y="122" width="240" height="50" rx="10" fill="#ffffff" stroke="#9aa5b1" stroke-width="2"/>
+<text x="440.0" y="143.0" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2937" text-anchor="middle">Vacancy.ru</text>
+<text x="440.0" y="160.0" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="normal" fill="#1f2937" text-anchor="middle">(уточняется)</text>
 <rect x="580" y="122" width="240" height="50" rx="10" fill="#ffffff" stroke="#9aa5b1" stroke-width="2"/>
 <text x="700.0" y="151.5" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2937" text-anchor="middle">Хабр Карьера / getmatch</text>
 <rect x="840" y="122" width="240" height="50" rx="10" fill="#ffffff" stroke="#9aa5b1" stroke-width="2"/>
@@ -39,21 +39,21 @@
 <rect x="100" y="582" width="240" height="56" rx="10" fill="#ffffff" stroke="#9aa5b1" stroke-width="2"/>
 <text x="220.0" y="606.0" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2937" text-anchor="middle">📝 Резюме под вакансию</text>
 <text x="220.0" y="623.0" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="normal" fill="#1f2937" text-anchor="middle">tailor.py + LLM</text>
-<rect x="460" y="582" width="240" height="56" rx="10" fill="#fff3cd" stroke="#e0a800" stroke-width="2"/>
+<rect x="460" y="582" width="240" height="56" rx="10" fill="#cfe2ff" stroke="#0d6efd" stroke-width="2"/>
 <text x="580.0" y="606.0" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2937" text-anchor="middle">✅ Подтверждение → 📤 Отклик</text>
-<text x="580.0" y="623.0" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="normal" fill="#1f2937" text-anchor="middle">полу-авто, лимиты/паузы</text>
+<text x="580.0" y="623.0" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="normal" fill="#1f2937" text-anchor="middle">официальный API, с лимитами</text>
 <rect x="820" y="582" width="240" height="56" rx="10" fill="#ffffff" stroke="#9aa5b1" stroke-width="2"/>
 <text x="940.0" y="614.5" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2937" text-anchor="middle">✖ Пропустить</text>
 <line x1="340" y1="610" x2="458" y2="610" stroke="#64748b" stroke-width="2" marker-end="url(#a)"/>
 <line x1="580" y1="638" x2="580" y2="662" stroke="#64748b" stroke-width="2" marker-end="url(#a)"/>
-<rect x="460" y="662" width="240" height="46" rx="10" fill="#fff3cd" stroke="#e0a800" stroke-width="2"/>
-<text x="580.0" y="689.5" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2937" text-anchor="middle">🌐 HH / площадка</text>
+<rect x="460" y="662" width="240" height="46" rx="10" fill="#d4edda" stroke="#28a745" stroke-width="2"/>
+<text x="580.0" y="689.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="600" fill="#1f2937" text-anchor="middle">🌐 HH.ru (POST /negotiations)</text>
 <line x1="580" y1="708" x2="580" y2="730" stroke="#64748b" stroke-width="2" marker-end="url(#a)"/>
 <rect x="460" y="730" width="240" height="46" rx="10" fill="#cfe2ff" stroke="#0d6efd" stroke-width="2"/>
 <text x="580.0" y="757.5" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2937" text-anchor="middle">📱 Павел (Telegram)</text>
 <rect x="40" y="800" width="1080" height="56" rx="10" fill="#eef2f7" stroke="#cbd5e1" stroke-width="2"/>
 <text x="580.0" y="826" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="600" fill="#475569" text-anchor="middle">🖥  Всё на VPS в РФ (резидентный IP)      ⏰  systemd-timer, каждое утро 09:00      🔐  секреты в .env (вне git)      🧩  источники за единым интерфейсом</text>
-<text x="60" y="786" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="600" fill="#28a745" text-anchor="start">🟢 готово / легально и безопасно</text>
-<text x="360" y="786" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="600" fill="#b8860b" text-anchor="start">🟡 «серый» путь — риск бана, только под подтверждением</text>
-<text x="820" y="786" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="600" fill="#0d6efd" text-anchor="start">🔵 опционально / интерактив</text>
+<text x="60" y="786" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="600" fill="#28a745" text-anchor="start">🟢 легально / готово</text>
+<text x="300" y="786" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="600" fill="#475569" text-anchor="start">⚪ требует ключей / уточнения</text>
+<text x="640" y="786" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="600" fill="#0d6efd" text-anchor="start">🔵 интерактив — отклик только с подтверждением</text>
 </svg>

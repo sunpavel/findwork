@@ -9,7 +9,7 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PY="$REPO_DIR/.venv/bin/python"
-SOURCES="${SOURCES:-trudvsem,hh}"      # источники для дайджеста
+SOURCES="${SOURCES:-hh}"                # источники для дайджеста (hh — официальный API)
 DIGEST_TIME="${DIGEST_TIME:-09:00}"     # время утреннего дайджеста (по МСК)
 
 echo "==> Репозиторий: $REPO_DIR"
@@ -27,11 +27,10 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq python3 python3-venv python3-pip git curl >/dev/null
 
-echo "==> Виртуальное окружение + зависимости"
+echo "==> Виртуальное окружение"
 python3 -m venv "$REPO_DIR/.venv"
 "$REPO_DIR/.venv/bin/pip" install -q --upgrade pip
-"$REPO_DIR/.venv/bin/pip" install -q hh-applicant-tool || \
-  echo "  (hh-applicant-tool не установился — HH подключим позже, не критично)"
+# Зависимостей нет — ядро и официальный HH-клиент на стандартной библиотеке.
 
 # --- определить chat_id, если не задан ---
 if [[ -z "${TG_CHAT_ID:-}" ]]; then
@@ -98,6 +97,8 @@ echo "    • Дайджест будет приходить каждый ден
 echo "    • Проверить таймер:   systemctl list-timers findwork.timer"
 echo "    • Прогнать вручную:    set -a; source .env; set +a; $PY src/pipeline.py --source trudvsem --send"
 echo ""
-echo "    HH (основной источник) подключается отдельно:"
-echo "      $REPO_DIR/.venv/bin/hh-applicant-tool authorize"
-echo "    после авторизации HH автоматически попадёт в утренний дайджест."
+echo "    HH (официальный API): впиши в .env HH_CLIENT_ID/HH_CLIENT_SECRET/HH_REDIRECT_URI"
+echo "    (регистрация приложения: https://dev.hh.ru/admin). Поиск заработает сразу."
+echo "    Для откликов/персонального поиска — авторизация соискателя:"
+echo "      set -a; source .env; set +a; $PY src/hh_auth.py url   (далее: ... code <CODE>)"
+echo "    Подробности: docs/hh_api.md"
