@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1160" height="900" viewBox="0 0 1160 900">
+<defs><marker id="a" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,3 L0,6 Z" fill="#64748b"/></marker></defs>
+<rect x="0" y="0" width="1160" height="900" rx="0" fill="#f7f9fc" stroke="#f7f9fc" stroke-width="0"/>
+<text x="580.0" y="40" font-family="Segoe UI, Arial, sans-serif" font-size="24" font-weight="700" fill="#1f2937" text-anchor="middle">findwork — схема работы системы</text>
+<text x="580.0" y="66" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="normal" fill="#6b7280" text-anchor="middle">сбор → скоринг релевантности → утренний дайджест в Telegram → отклик с подтверждением</text>
+<rect x="40" y="90" width="1080" height="96" rx="10" fill="#eef2f7" stroke="#cbd5e1" stroke-width="2"/>
+<text x="60" y="112" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="700" fill="#475569" text-anchor="start">Источники вакансий</text>
+<rect x="60" y="122" width="240" height="50" rx="10" fill="#d4edda" stroke="#28a745" stroke-width="2"/>
+<text x="180.0" y="143.0" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2937" text-anchor="middle">Trudvsem API  ✓</text>
+<text x="180.0" y="160.0" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="normal" fill="#1f2937" text-anchor="middle">офиц., бесплатно, легально</text>
+<rect x="320" y="122" width="240" height="50" rx="10" fill="#fff3cd" stroke="#e0a800" stroke-width="2"/>
+<text x="440.0" y="143.0" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2937" text-anchor="middle">HH  ⚠</text>
+<text x="440.0" y="160.0" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="normal" fill="#1f2937" text-anchor="middle">эмуляция приложения</text>
+<rect x="580" y="122" width="240" height="50" rx="10" fill="#ffffff" stroke="#9aa5b1" stroke-width="2"/>
+<text x="700.0" y="151.5" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2937" text-anchor="middle">Хабр Карьера / getmatch</text>
+<rect x="840" y="122" width="240" height="50" rx="10" fill="#ffffff" stroke="#9aa5b1" stroke-width="2"/>
+<text x="960.0" y="151.5" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2937" text-anchor="middle">Telegram-каналы вакансий</text>
+<line x1="580.0" y1="186" x2="580.0" y2="206" stroke="#64748b" stroke-width="2" marker-end="url(#a)"/>
+<rect x="370.0" y="206" width="420" height="48" rx="10" fill="#ffffff" stroke="#9aa5b1" stroke-width="2"/>
+<text x="580.0" y="235.0" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="600" fill="#1f2937" text-anchor="middle">🧲 Сборщик — нормализация в единую схему</text>
+<line x1="580.0" y1="254" x2="580.0" y2="274" stroke="#64748b" stroke-width="2" marker-end="url(#a)"/>
+<rect x="370.0" y="274" width="420" height="48" rx="10" fill="#ffffff" stroke="#9aa5b1" stroke-width="2"/>
+<text x="580.0" y="303.0" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="600" fill="#1f2937" text-anchor="middle">🔁 Дедуп  ·  state/seen.json</text>
+<line x1="580.0" y1="322" x2="580.0" y2="342" stroke="#64748b" stroke-width="2" marker-end="url(#a)"/>
+<rect x="370.0" y="342" width="420" height="56" rx="10" fill="#d4edda" stroke="#28a745" stroke-width="2"/>
+<text x="580.0" y="366.0" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="600" fill="#1f2937" text-anchor="middle">🎯 Скоринг релевантности</text>
+<text x="580.0" y="384.0" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="normal" fill="#1f2937" text-anchor="middle">relevance.py + profile.json (стек ↔ требования)</text>
+<line x1="580.0" y1="398" x2="580.0" y2="418" stroke="#64748b" stroke-width="2" marker-end="url(#a)"/>
+<rect x="370.0" y="418" width="420" height="48" rx="10" fill="#cfe2ff" stroke="#0d6efd" stroke-width="2"/>
+<text x="580.0" y="447.0" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="600" fill="#1f2937" text-anchor="middle">🤖 LLM-доскоринг (опц., Claude API)</text>
+<line x1="580.0" y1="466" x2="580.0" y2="486" stroke="#64748b" stroke-width="2" marker-end="url(#a)"/>
+<rect x="370.0" y="486" width="420" height="50" rx="10" fill="#d4edda" stroke="#28a745" stroke-width="2"/>
+<text x="580.0" y="516.0" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="600" fill="#1f2937" text-anchor="middle">🗞 Дайджест  →  📨 Telegram-бот</text>
+<line x1="580.0" y1="536" x2="580.0" y2="560" stroke="#64748b" stroke-width="2" marker-end="url(#a)"/>
+<line x1="220" y1="560" x2="940" y2="560" stroke="#64748b" stroke-width="2"/>
+<line x1="220" y1="560" x2="220" y2="582" stroke="#64748b" stroke-width="2" marker-end="url(#a)"/>
+<line x1="580" y1="560" x2="580" y2="582" stroke="#64748b" stroke-width="2" marker-end="url(#a)"/>
+<line x1="940" y1="560" x2="940" y2="582" stroke="#64748b" stroke-width="2" marker-end="url(#a)"/>
+<rect x="100" y="582" width="240" height="56" rx="10" fill="#ffffff" stroke="#9aa5b1" stroke-width="2"/>
+<text x="220.0" y="606.0" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2937" text-anchor="middle">📝 Резюме под вакансию</text>
+<text x="220.0" y="623.0" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="normal" fill="#1f2937" text-anchor="middle">tailor.py + LLM</text>
+<rect x="460" y="582" width="240" height="56" rx="10" fill="#fff3cd" stroke="#e0a800" stroke-width="2"/>
+<text x="580.0" y="606.0" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2937" text-anchor="middle">✅ Подтверждение → 📤 Отклик</text>
+<text x="580.0" y="623.0" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="normal" fill="#1f2937" text-anchor="middle">полу-авто, лимиты/паузы</text>
+<rect x="820" y="582" width="240" height="56" rx="10" fill="#ffffff" stroke="#9aa5b1" stroke-width="2"/>
+<text x="940.0" y="614.5" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2937" text-anchor="middle">✖ Пропустить</text>
+<line x1="340" y1="610" x2="458" y2="610" stroke="#64748b" stroke-width="2" marker-end="url(#a)"/>
+<line x1="580" y1="638" x2="580" y2="662" stroke="#64748b" stroke-width="2" marker-end="url(#a)"/>
+<rect x="460" y="662" width="240" height="46" rx="10" fill="#fff3cd" stroke="#e0a800" stroke-width="2"/>
+<text x="580.0" y="689.5" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2937" text-anchor="middle">🌐 HH / площадка</text>
+<line x1="580" y1="708" x2="580" y2="730" stroke="#64748b" stroke-width="2" marker-end="url(#a)"/>
+<rect x="460" y="730" width="240" height="46" rx="10" fill="#cfe2ff" stroke="#0d6efd" stroke-width="2"/>
+<text x="580.0" y="757.5" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2937" text-anchor="middle">📱 Павел (Telegram)</text>
+<rect x="40" y="800" width="1080" height="56" rx="10" fill="#eef2f7" stroke="#cbd5e1" stroke-width="2"/>
+<text x="580.0" y="826" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="600" fill="#475569" text-anchor="middle">🖥  Всё на VPS в РФ (резидентный IP)      ⏰  systemd-timer, каждое утро 09:00      🔐  секреты в .env (вне git)      🧩  источники за единым интерфейсом</text>
+<text x="60" y="786" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="600" fill="#28a745" text-anchor="start">🟢 готово / легально и безопасно</text>
+<text x="360" y="786" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="600" fill="#b8860b" text-anchor="start">🟡 «серый» путь — риск бана, только под подтверждением</text>
+<text x="820" y="786" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="600" fill="#0d6efd" text-anchor="start">🔵 опционально / интерактив</text>
+</svg>
