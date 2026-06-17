@@ -29,6 +29,14 @@ N8N_URL = os.environ.get("N8N_URL", "https://solarn8n.pro").rstrip("/")
 N8N_KEY = os.environ.get("N8N_KEY", "")
 TELEGRAM_CRED = {"id": "C6kRfnWdYvqjRNrb", "name": "SolarHH_bot"}
 CHAT_ID = "109790719"
+BROWSER_UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+              "(KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36")
+HH_HEADERS = {"parameters": [
+    {"name": "User-Agent", "value": BROWSER_UA},
+    {"name": "HH-User-Agent", "value": "findwork/1.0 (sunpavel@mail.ru)"},
+    {"name": "Accept", "value": "application/json, text/plain, */*"},
+    {"name": "Accept-Language", "value": "ru-RU,ru;q=0.9"},
+]}
 
 HH_QUERY = """={
   "text": "%(role)s",
@@ -126,10 +134,20 @@ def build():
                    [-480, 170])
     n_hh1 = node("HH Коммерческий директор", "n8n-nodes-base.httpRequest", 4.2,
                  {"url": "=https://api.hh.ru/vacancies", "sendQuery": True, "specifyQuery": "json",
-                  "jsonQuery": HH_QUERY % {"role": "Коммерческий директор"}, "options": {}}, [-260, 80])
+                  "jsonQuery": HH_QUERY % {"role": "Коммерческий директор"},
+                  "sendHeaders": True, "headerParameters": HH_HEADERS,
+                  "options": {}}, [-260, 80])
     n_hh2 = node("HH Директор по маркетингу", "n8n-nodes-base.httpRequest", 4.2,
                  {"url": "=https://api.hh.ru/vacancies", "sendQuery": True, "specifyQuery": "json",
-                  "jsonQuery": HH_QUERY % {"role": "директор по маркетингу"}, "options": {}}, [-260, 280])
+                  "jsonQuery": HH_QUERY % {"role": "директор по маркетингу"},
+                  "sendHeaders": True, "headerParameters": HH_HEADERS,
+                  "options": {}}, [-260, 280])
+    # устойчивость к перемежающемуся 403 HH: ретраи + не ронять воркфлоу, если ветка не прошла
+    for h in (n_hh1, n_hh2):
+        h["retryOnFail"] = True
+        h["maxTries"] = 5
+        h["waitBetweenTries"] = 5000
+        h["onError"] = "continueRegularOutput"
     n_merge = node("Merge", "n8n-nodes-base.merge", 3, {"mode": "append", "numberInputs": 2}, [0, 180])
     n_score = node("findwork: скоринг + дайджест", "n8n-nodes-base.code", 2, {"jsCode": js}, [240, 180])
     n_tg = node("Telegram: дайджест", "n8n-nodes-base.telegram", 1.2,
@@ -173,12 +191,17 @@ def main():
         sys.exit("Задай N8N_KEY (и опц. N8N_URL).")
     wf = build()
     data = json.dumps(wf).encode("utf-8")
-    req = urllib.request.Request(f"{N8N_URL}/api/v1/workflows", data=data,
+    wf_id = os.environ.get("N8N_WF_ID")  # если задан — обновляем существующий (PUT)
+    if wf_id:
+        url, method, verb = f"{N8N_URL}/api/v1/workflows/{wf_id}", "PUT", "ОБНОВЛЁН"
+    else:
+        url, method, verb = f"{N8N_URL}/api/v1/workflows", "POST", "СОЗДАН"
+    req = urllib.request.Request(url, data=data, method=method,
                                  headers={"X-N8N-API-KEY": N8N_KEY, "Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=40) as resp:
             out = json.loads(resp.read().decode())
-        print("СОЗДАН воркфлоу:")
+        print(f"{verb} воркфлоу:")
         print("  id:", out.get("id"), "| name:", out.get("name"), "| active:", out.get("active"))
         print(f"  открой: {N8N_URL}/workflow/{out.get('id')}")
     except urllib.error.HTTPError as e:
