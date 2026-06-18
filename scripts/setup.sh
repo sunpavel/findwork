@@ -1,21 +1,24 @@
 #!/usr/bin/env bash
 # -*- coding: utf-8 -*-
 #
-# Установка findwork на сервере «под ключ»:
-#   1) зависимости (pip-пакеты для PDF/DOCX + шрифт кириллицы);
-#   2) прокси-клиент mihomo (Clash.Meta) из твоей VPN-подписки -> локальный
-#      HTTP/SOCKS-прокси 127.0.0.1:7890 (обход гео-блока OpenAI/Anthropic);
-#   3) LLM_PROXY в .env;
-#   4) бот как сервис systemd (запуск 24/7, авто-рестарт).
+# Установка findwork на сервере «под ключ». Два режима LLM-доступа:
+#
+#   ПРЯМОЙ (рекомендуется, бесплатно, без VPN) — если в .env прописан
+#   OpenAI-совместимый шлюз, доступный из РФ (напр. OpenRouter:
+#   OPENAI_BASE_URL=https://openrouter.ai/api/v1). Тогда VPN не нужен,
+#   mihomo не ставится, LLM_PROXY из .env убирается.
+#
+#   ЧЕРЕЗ VPN — если LLM ходит на api.openai.com/api.anthropic.com напрямую
+#   (гео-блок 403 из РФ). Тогда поднимаем mihomo из VPN-подписки и пишем
+#   LLM_PROXY=127.0.0.1:7890. Включается передачей ссылки-подписки аргументом.
 #
 # Использование (на сервере, под root):
-#   bash scripts/setup.sh "<ССЫЛКА-ПОДПИСКА-VPN>"
+#   bash scripts/setup.sh                       # прямой режим (OpenRouter и т.п.)
+#   bash scripts/setup.sh "<ССЫЛКА-ПОДПИСКА-VPN>"   # режим VPN
+#   FORCE_VPN=1 bash scripts/setup.sh "<URL>"   # поднять VPN, даже если есть прямой шлюз
 #
-# Пример:
-#   bash scripts/setup.sh "https://join.example.store/iam/XXXX"
-#
-# Подписка НЕ сохраняется в репозиторий — она пишется только в /etc/mihomo на сервере.
-# Повторный запуск безопасен (идемпотентно).
+# Подписка НЕ сохраняется в репозиторий — только в /etc/mihomo на сервере.
+# Повторный запуск безопасен (идемпотентно) и сам исправляет конфигурацию.
 
 set -euo pipefail
 
@@ -30,49 +33,74 @@ warn() { printf '\033[1;33m[!] %s\033[0m\n' "$*"; }
 die() { printf '\033[1;31m[x] %s\033[0m\n' "$*" >&2; exit 1; }
 
 [ "$(id -u)" = "0" ] || die "запускай под root (sudo)."
-[ -n "$SUB_URL" ] || die "укажи ссылку-подписку VPN: bash scripts/setup.sh \"<URL>\""
+[ -f "$ENV_FILE" ] || die "нет $ENV_FILE — сначала создай .env (см. .env.example)."
 
 # --- 1. Зависимости ----------------------------------------------------------
-say "1/5 Зависимости (pip-пакеты для PDF/DOCX, шрифт кириллицы)"
+say "1/4 Зависимости (pip-пакеты для PDF/DOCX, шрифт кириллицы)"
 apt-get update -qq
 apt-get install -y -qq python3-pip fonts-dejavu-core curl gzip ca-certificates >/dev/null
 "$PY" -m pip install --break-system-packages --quiet --upgrade fpdf2 python-docx >/dev/null
 echo "ok: fpdf2, python-docx, fonts-dejavu-core"
 
-# --- 2. mihomo (Clash.Meta) --------------------------------------------------
-say "2/5 Прокси-клиент mihomo"
-if ! command -v mihomo >/dev/null 2>&1; then
-  arch="$(uname -m)"
-  case "$arch" in
-    x86_64|amd64) want="linux-amd64-compatible" ;;
-    aarch64|arm64) want="linux-arm64" ;;
-    *) die "неизвестная архитектура: $arch" ;;
-  esac
-  # Определяем свежий тег через редирект releases/latest (без GitHub API — он
-  # часто отдаёт 403 по рейт-лимиту). Фолбэк — закреплённая версия.
-  tag="$(curl -fsSLI -o /dev/null -w '%{url_effective}' \
-        https://github.com/MetaCubeX/mihomo/releases/latest 2>/dev/null | sed 's#.*/tag/##')"
-  [ -n "$tag" ] || tag="v1.19.27"
-  asset_url="https://github.com/MetaCubeX/mihomo/releases/download/${tag}/mihomo-${want}-${tag}.gz"
-  say "  скачиваю mihomo ${tag} ($want)"
-  curl -fsSL "$asset_url" -o /tmp/mihomo.gz || die "не скачался mihomo: $asset_url"
-  gunzip -f /tmp/mihomo.gz
-  install -m 0755 /tmp/mihomo /usr/local/bin/mihomo
-  rm -f /tmp/mihomo
-fi
-echo "ok: $(mihomo -v 2>/dev/null | head -1 || echo mihomo)"
+# --- 2. Выбор режима: прямой (без VPN) или через VPN --------------------------
+# Прямой режим, если LLM-эндпоинт — сторонний совместимый шлюз (не api.openai.com /
+# api.anthropic.com): такой (OpenRouter и т.п.) доступен из РФ напрямую.
+llm_base="$(grep -E '^OPENAI_BASE_URL=' "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '[:space:]')"
+direct=0
+case "$llm_base" in
+  ""|*api.openai.com*|*api.anthropic.com*) direct=0 ;;
+  *) direct=1 ;;
+esac
+[ "${FORCE_VPN:-0}" = "1" ] && direct=0
 
-# --- 3. Конфиг mihomo из подписки + systemd ----------------------------------
-say "3/5 Загружаю узлы из подписки и настраиваю mihomo"
-mkdir -p /etc/mihomo
-# Подписка отдаёт ПОЛНЫЙ clash-конфиг — скачиваем его как файл-источник узлов.
-curl -fsSL -A "clash-meta" "${SUB_URL}" -o /etc/mihomo/sub.yaml || die "не скачалась подписка"
-grep -q 'proxies:' /etc/mihomo/sub.yaml \
-  || die "в подписке нет 'proxies:' (формат не clash). Покажи: head -c 200 /etc/mihomo/sub.yaml"
+if [ "$direct" = "1" ]; then
+  # === ПРЯМОЙ РЕЖИМ ===========================================================
+  say "2/4 Прямой режим LLM (без VPN): $llm_base"
+  echo "    OpenAI-совместимый шлюз доступен из РФ напрямую — VPN/mihomo не нужны."
+  # Убираем LLM_PROXY из .env (иначе запросы пойдут через прокси без надобности).
+  if grep -q '^LLM_PROXY=' "$ENV_FILE"; then
+    grep -v '^LLM_PROXY=' "$ENV_FILE" > "$ENV_FILE.tmp" && mv "$ENV_FILE.tmp" "$ENV_FILE"
+    echo "ok: LLM_PROXY убран из .env (прямое соединение)"
+  else
+    echo "ok: LLM_PROXY в .env нет (прямое соединение)"
+  fi
+  chmod 600 "$ENV_FILE"
+  # Если mihomo раньше ставился — гасим, чтобы не висел зря.
+  systemctl disable --now mihomo >/dev/null 2>&1 && echo "ok: лишний сервис mihomo остановлен" || true
+  BOT_AFTER="network-online.target"
+else
+  # === РЕЖИМ VPN ==============================================================
+  [ -n "$SUB_URL" ] || die "укажи ссылку-подписку VPN: bash scripts/setup.sh \"<URL>\"  (или настрой OpenRouter в .env для прямого режима — см. .env.example)"
 
-# Свой конфиг: берём ТОЛЬКО узлы из подписки (как файловый провайдер) и гоним
-# ВЕСЬ трафик через самый быстрый из них (MATCH,PROXY) — детерминированно.
-cat > /etc/mihomo/config.yaml <<YAML
+  say "2/4 Прокси-клиент mihomo"
+  if ! command -v mihomo >/dev/null 2>&1; then
+    arch="$(uname -m)"
+    case "$arch" in
+      x86_64|amd64) want="linux-amd64-compatible" ;;
+      aarch64|arm64) want="linux-arm64" ;;
+      *) die "неизвестная архитектура: $arch" ;;
+    esac
+    # Свежий тег через редирект releases/latest (без GitHub API — он часто 403 по
+    # рейт-лимиту). Фолбэк — закреплённая версия.
+    tag="$(curl -fsSLI -o /dev/null -w '%{url_effective}' \
+          https://github.com/MetaCubeX/mihomo/releases/latest 2>/dev/null | sed 's#.*/tag/##')"
+    [ -n "$tag" ] || tag="v1.19.27"
+    asset_url="https://github.com/MetaCubeX/mihomo/releases/download/${tag}/mihomo-${want}-${tag}.gz"
+    say "  скачиваю mihomo ${tag} ($want)"
+    curl -fsSL "$asset_url" -o /tmp/mihomo.gz || die "не скачался mihomo: $asset_url"
+    gunzip -f /tmp/mihomo.gz
+    install -m 0755 /tmp/mihomo /usr/local/bin/mihomo
+    rm -f /tmp/mihomo
+  fi
+  echo "ok: $(mihomo -v 2>/dev/null | head -1 || echo mihomo)"
+
+  say "3/4 Загружаю узлы из подписки и настраиваю mihomo"
+  mkdir -p /etc/mihomo
+  curl -fsSL -A "clash-meta" "${SUB_URL}" -o /etc/mihomo/sub.yaml || die "не скачалась подписка"
+  grep -q 'proxies:' /etc/mihomo/sub.yaml \
+    || die "в подписке нет 'proxies:' (формат не clash). Покажи: head -c 200 /etc/mihomo/sub.yaml"
+
+  cat > /etc/mihomo/config.yaml <<YAML
 mixed-port: ${PROXY_PORT}
 allow-lan: false
 bind-address: "127.0.0.1"
@@ -106,7 +134,7 @@ rules:
   - MATCH,PROXY
 YAML
 
-cat > /etc/systemd/system/mihomo.service <<UNIT
+  cat > /etc/systemd/system/mihomo.service <<UNIT
 [Unit]
 Description=mihomo proxy (findwork)
 After=network-online.target
@@ -121,35 +149,34 @@ RestartSec=5
 WantedBy=multi-user.target
 UNIT
 
-systemctl daemon-reload
-systemctl enable mihomo >/dev/null 2>&1 || true
-systemctl restart mihomo
-sleep 10
+  systemctl daemon-reload
+  systemctl enable mihomo >/dev/null 2>&1 || true
+  systemctl restart mihomo
+  sleep 10
 
-# Сколько узлов реально загрузилось (через API mihomo) — главный диагностический сигнал.
-nodes="$(curl -s --max-time 10 http://127.0.0.1:9090/providers/proxies 2>/dev/null | "$PY" -c '
+  nodes="$(curl -s --max-time 10 http://127.0.0.1:9090/providers/proxies 2>/dev/null | "$PY" -c '
 import sys, json
 try:
     d = json.load(sys.stdin)
     print(len((d.get("providers", {}).get("vpn", {}) or {}).get("proxies", [])))
 except Exception:
     print("?")' 2>/dev/null || echo "?")"
-echo "узлов из подписки загружено: ${nodes}"
-[ "$nodes" = "0" ] && warn "узлы не загрузились — проверь формат: head -c 200 /etc/mihomo/sub.yaml"
+  echo "узлов из подписки загружено: ${nodes}"
+  [ "$nodes" = "0" ] && warn "узлы не загрузились — проверь формат: head -c 200 /etc/mihomo/sub.yaml"
 
-say "  проверяю выход через прокси…"
-country="$(curl -s --max-time 25 -x "http://127.0.0.1:${PROXY_PORT}" https://ipinfo.io/country 2>/dev/null | tr -d '[:space:]' || true)"
-if [ -z "$country" ]; then
-  warn "прокси не отвечает (возможно, после фильтра не осталось зарубежных узлов)."
-elif [ "$country" = "RU" ]; then
-  warn "выход всё ещё RU."
-else
-  echo "ok: выход через прокси из страны: $country (не RU — гео-блок обойдён)"
-fi
+  say "  проверяю выход через прокси…"
+  country="$(curl -s --max-time 25 -x "http://127.0.0.1:${PROXY_PORT}" https://ipinfo.io/country 2>/dev/null | tr -d '[:space:]' || true)"
+  if [ -z "$country" ]; then
+    warn "прокси не отвечает (возможно, после фильтра не осталось зарубежных узлов)."
+  elif [ "$country" = "RU" ]; then
+    warn "выход всё ещё RU."
+  else
+    echo "ok: выход через прокси из страны: $country (не RU — гео-блок обойдён)"
+  fi
 
-if [ "$country" = "RU" ] || [ -z "$country" ]; then
-  echo "--- узлы из подписки (диагностика) ---"
-  curl -s --max-time 10 http://127.0.0.1:9090/providers/proxies | "$PY" -c '
+  if [ "$country" = "RU" ] || [ -z "$country" ]; then
+    echo "--- узлы из подписки (диагностика) ---"
+    curl -s --max-time 10 http://127.0.0.1:9090/providers/proxies | "$PY" -c '
 import sys, json
 try:
     d = json.load(sys.stdin)
@@ -158,24 +185,25 @@ try:
         print("  ", p.get("name"), "| delay:", h[-1].get("delay", "-"))
 except Exception as e:
     print("  (не прочитать список:", e, ")")' 2>/dev/null || true
-  warn "Если тут только «Без VPN»/инструкции — подписка HWID-заблокирована (нет реальных серверов)."
+    warn "Если тут только «Без VPN»/инструкции — подписка HWID-заблокирована (нет реальных серверов)."
+    warn "Бесплатная альтернатива без VPN: настрой OpenRouter в .env (см. .env.example) и перезапусти скрипт без аргумента."
+  fi
+
+  # LLM_PROXY в .env
+  grep -v '^LLM_PROXY=' "$ENV_FILE" > "$ENV_FILE.tmp" || true
+  mv "$ENV_FILE.tmp" "$ENV_FILE"
+  echo "LLM_PROXY=http://127.0.0.1:${PROXY_PORT}" >> "$ENV_FILE"
+  chmod 600 "$ENV_FILE"
+  echo "ok: LLM_PROXY=http://127.0.0.1:${PROXY_PORT}"
+  BOT_AFTER="network-online.target mihomo.service"
 fi
 
-# --- 4. LLM_PROXY в .env -----------------------------------------------------
-say "4/5 Прописываю LLM_PROXY в .env"
-[ -f "$ENV_FILE" ] || die "нет $ENV_FILE — сначала создай .env (см. .env.example)."
-grep -v '^LLM_PROXY=' "$ENV_FILE" > "$ENV_FILE.tmp" || true
-mv "$ENV_FILE.tmp" "$ENV_FILE"
-echo "LLM_PROXY=http://127.0.0.1:${PROXY_PORT}" >> "$ENV_FILE"
-chmod 600 "$ENV_FILE"
-echo "ok: LLM_PROXY=http://127.0.0.1:${PROXY_PORT}"
-
-# --- 5. Бот как сервис systemd ----------------------------------------------
-say "5/5 Бот как сервис systemd (24/7, авто-рестарт)"
+# --- 4. Бот как сервис systemd ----------------------------------------------
+say "4/4 Бот как сервис systemd (24/7, авто-рестарт)"
 cat > /etc/systemd/system/findwork-bot.service <<UNIT
 [Unit]
 Description=findwork Telegram bot
-After=network-online.target mihomo.service
+After=${BOT_AFTER}
 Wants=network-online.target
 
 [Service]
@@ -195,13 +223,13 @@ sleep 2
 
 say "Готово!"
 cat <<DONE
-Статус сервисов:
-  systemctl status mihomo --no-pager
+Статус сервиса:
   systemctl status findwork-bot --no-pager
 Логи бота вживую:
   journalctl -u findwork-bot -f
 Обновить проект потом:
   cd ${REPO} && git pull && systemctl restart findwork-bot
 
-В Telegram отправь боту /health — строка «Письма (LLM)» должна стать зелёной.
+В Telegram отправь боту /health (галка «Письма (LLM)» зелёная),
+затем /dry <ссылка на вакансию> — это реальная генерация резюме и письма.
 DONE
