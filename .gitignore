@@ -8,6 +8,9 @@ secrets/
 credentials*.json
 *token*.txt
 
+# сгенерированные резюме/письма (PDF/DOCX) — не коммитим
+out/
+
 # состояние пайплайна
 state/
 *.sqlite

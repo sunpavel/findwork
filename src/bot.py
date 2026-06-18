@@ -23,6 +23,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 import time
 import urllib.parse
 import urllib.request
@@ -32,6 +33,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import apply as apply_mod
+import career_agent
 import hh_app
 import tailor as tailor_mod
 import webvac
@@ -82,6 +84,30 @@ def send(chat_id, text: str, buttons: list | None = None) -> None:
         _api("sendMessage", params, timeout=20)
     except Exception as e:  # noqa: BLE001
         print(f"[bot] send error: {e}", file=sys.stderr)
+
+
+def send_document(chat_id, path: str, caption: str = "") -> None:
+    """Отправляет файл (PDF/DOCX) в чат через multipart/form-data."""
+    boundary = "----findwork" + uuid.uuid4().hex
+    fields = {"chat_id": str(chat_id)}
+    if caption:
+        fields["caption"] = caption[:1000]
+    parts = [(f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n').encode()
+             for k, v in fields.items()]
+    with open(path, "rb") as f:
+        data = f.read()
+    parts.append((f'--{boundary}\r\nContent-Disposition: form-data; name="document"; '
+                  f'filename="{os.path.basename(path)}"\r\n'
+                  f'Content-Type: application/octet-stream\r\n\r\n').encode())
+    body = b"".join(parts) + data + f"\r\n--{boundary}--\r\n".encode()
+    req = urllib.request.Request(
+        API.format(token=_token(), method="sendDocument"), data=body,
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
+    try:
+        with urllib.request.urlopen(req, timeout=90) as r:
+            r.read()
+    except Exception as e:  # noqa: BLE001
+        print(f"[bot] sendDocument error: {e}", file=sys.stderr)
 
 
 def _answer_callback(cb_id: str, text: str = "") -> None:
@@ -177,26 +203,51 @@ def _handle_confirm(chat_id, token: str) -> None:
 
 def _handle_assist(chat_id, url: str) -> None:
     site = urllib.parse.urlparse(url).netloc or "сайт"
-    send(chat_id, f"⏳ Беру вакансию с {site}, готовлю резюме и письмо…")
+    send(chat_id, f"⏳ Беру вакансию с {site}…")
     try:
         vacancy = webvac.fetch_vacancy(url)
     except Exception as e:  # noqa: BLE001
         send(chat_id, f"⚠️ Не смог открыть страницу ({e}). "
                       f"Пришли текст вакансии сообщением — соберу по нему.")
         return
-    tr = tailor_mod.tailor(vacancy)
-    ov = tr.resume_overrides
-    skills = ", ".join(ov.get("skill_set", [])[:12])
-    text = (
-        f"🧩 *Ассистент ({site})* — отклик делаешь сам на сайте.\n\n"
-        f"🎯 *{vacancy.get('name', 'Вакансия')}*\n\n"
-        f"📄 *Резюме (черновик под вакансию):* «{ov.get('title', '')}»\n"
-        f"_Навыки:_ {skills}\n"
-        f"_О себе:_ {ov.get('skills', '')}\n\n"
-        f"✉️ *Сопроводительное:*\n{tr.cover_letter}\n\n"
-        f"🔗 {url}\n_Текст: {tr.source}._"
-    )
-    send(chat_id, text)
+
+    send(chat_id, "🧠 Анализирую вакансию, пишу резюме и письмо, проверяю второй моделью… (~минуту)")
+    try:
+        app = career_agent.prepare_application(vacancy)
+    except Exception as e:  # noqa: BLE001 — деградация на простой шаблон
+        tr = tailor_mod.tailor(vacancy)
+        send(chat_id, f"⚠️ Полный пайплайн не сработал ({e}). Базовый вариант:\n\n✉️ {tr.cover_letter}")
+        return
+
+    a = app.analysis or {}
+    accents = ", ".join((a.get("accents") or [])[:5])
+    head = (f"🧩 *Ассистент ({site})* — отклик делаешь сам на сайте.\n\n"
+            f"🎯 *{vacancy.get('name', 'Вакансия')}*\n")
+    if a.get("real_role"):
+        head += f"_Роль:_ {a['real_role']}\n"
+    if accents:
+        head += f"_Акценты под вакансию:_ {accents}\n"
+    head += (f"_Проверка ({'/'.join(n for n in app.notes if 'провер' in n) or '—'}):_ "
+             f"{app.review.get('verdict', '—')} {app.review.get('score', '')}/100")
+    send(chat_id, head)
+    send(chat_id, "✉️ *Сопроводительное:*\n" + (app.cover_letter or "—"))
+
+    # Резюме файлами (PDF + DOCX). Если пакетов рендера нет — отдадим текстом.
+    try:
+        import resume_doc  # noqa: PLC0415 — нужен fpdf2/python-docx
+        with tempfile.TemporaryDirectory() as d:
+            pdf, docx = resume_doc.render_both(app.resume, d)
+            send_document(chat_id, pdf, "📄 Резюме под вакансию (PDF — для отправки)")
+            send_document(chat_id, docx, "✏️ То же в DOCX — поправь перед отправкой при необходимости")
+    except Exception as e:  # noqa: BLE001
+        send(chat_id, f"⚠️ Файл резюме не собрался ({e}).\nУстанови на сервере: "
+                      f"`pip install fpdf2 python-docx`.\n\n📄 Профиль резюме:\n"
+                      f"{app.resume.get('profile', '')}")
+
+    recs = app.recommendations or {}
+    if recs.get("interview_questions"):
+        send(chat_id, "🎯 *Возможные вопросы на интервью:*\n- "
+             + "\n- ".join(recs["interview_questions"][:5]))
 
 
 # --- здоровье/диагностика -----------------------------------------------------
