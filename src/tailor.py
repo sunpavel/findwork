@@ -7,12 +7,13 @@
 скоринга (опц.). Выход: TailorResult — правки резюме (title / skill_set / skills)
 и текст сопроводительного письма.
 
-Качество текста здесь решает, поэтому по умолчанию используем Claude API
-(официальный SDK `anthropic`, модель claude-opus-4-8). Если пакет не установлен
-или нет ANTHROPIC_API_KEY — мягко падаем на детерминированный шаблон, чтобы
+Качество текста здесь решает, поэтому по умолчанию используем LLM. Провайдер
+выбирается переменной LLM_PROVIDER:
+  • openai    — ChatGPT (OPENAI_API_KEY, модель из OPENAI_MODEL, по умолчанию gpt-5);
+  • anthropic — Claude  (ANTHROPIC_API_KEY, модель из ANTHROPIC_MODEL, по умолч. claude-opus-4-8).
+Если LLM_PROVIDER не задан — берём openai при наличии OPENAI_API_KEY, иначе anthropic.
+Если ни ключа, ни SDK нет — мягко падаем на детерминированный шаблон, чтобы
 пайплайн всё равно работал (ядро проекта остаётся без обязательных зависимостей).
-
-Модель можно переопределить переменной ANTHROPIC_MODEL.
 """
 
 from __future__ import annotations
@@ -21,11 +22,14 @@ import html
 import json
 import os
 import re
+import urllib.error
+import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 
 MASTER_RESUME = Path(__file__).resolve().parent.parent / "resume" / "master_cco.md"
-DEFAULT_MODEL = "claude-opus-4-8"
+DEFAULT_MODEL = "claude-opus-4-8"          # Anthropic по умолчанию
+OPENAI_DEFAULT_MODEL = "gpt-5"             # OpenAI по умолчанию
 
 
 @dataclass
@@ -93,33 +97,17 @@ _SYSTEM = """Ты — карьерный эксперт и редактор ре
 - Сопроводительное — персонально под компанию и вакансию, а не универсальная рыба."""
 
 
-def _tailor_llm(vacancy: dict, master_md: str, score_hint: str | None) -> TailorResult | None:
-    """Пробует сгенерировать через Claude API. None — если SDK/ключ недоступны."""
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        return None
-    try:
-        import anthropic  # noqa: PLC0415 — опциональная зависимость
-    except ImportError:
-        return None
-
-    model = os.environ.get("ANTHROPIC_MODEL", DEFAULT_MODEL)
+def _build_user(vacancy: dict, master_md: str, score_hint: str | None) -> str:
     user = (
         f"=== МАСТЕР-РЕЗЮМЕ КАНДИДАТА ===\n{master_md}\n\n"
         f"=== ВАКАНСИЯ ===\n{vacancy_brief(vacancy)}\n"
     )
     if score_hint:
         user += f"\n=== ПОДСКАЗКА ПО МАТЧИНГУ (наш скоринг) ===\n{score_hint}\n"
+    return user
 
-    client = anthropic.Anthropic()
-    resp = client.messages.create(
-        model=model,
-        max_tokens=4000,
-        system=_SYSTEM,
-        messages=[{"role": "user", "content": user}],
-        output_config={"format": {"type": "json_schema", "schema": _SCHEMA}},
-    )
-    text = next((b.text for b in resp.content if b.type == "text"), "")
-    data = json.loads(text)
+
+def _result_from_json(data: dict, note: str) -> TailorResult:
     return TailorResult(
         resume_overrides={
             "title": data["resume_title"].strip(),
@@ -128,8 +116,91 @@ def _tailor_llm(vacancy: dict, master_md: str, score_hint: str | None) -> Tailor
         },
         cover_letter=data["cover_letter"].strip(),
         source="llm",
-        notes=[f"модель {model}"],
+        notes=[note],
     )
+
+
+def _provider() -> str:
+    """Какой LLM использовать: openai | anthropic | none."""
+    p = os.environ.get("LLM_PROVIDER", "").strip().lower()
+    if p in ("openai", "anthropic"):
+        return p
+    if os.environ.get("OPENAI_API_KEY"):
+        return "openai"
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        return "anthropic"
+    return "none"
+
+
+def _tailor_openai(vacancy: dict, master_md: str, score_hint: str | None) -> TailorResult | None:
+    """Генерация через OpenAI Chat Completions (чистый urllib, без пакета openai)."""
+    key = os.environ.get("OPENAI_API_KEY")
+    if not key:
+        return None
+    model = os.environ.get("OPENAI_MODEL", OPENAI_DEFAULT_MODEL)
+    body = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": _SYSTEM},
+            {"role": "user", "content": _build_user(vacancy, master_md, score_hint)},
+        ],
+        # max_completion_tokens (а не max_tokens) — иначе reasoning-модели (gpt-5) ругаются.
+        "max_completion_tokens": int(os.environ.get("OPENAI_MAX_TOKENS", "6000")),
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {"name": "tailor", "strict": True, "schema": _SCHEMA},
+        },
+    }
+    # У gpt-5/o-моделей глубина раздумий сильно влияет на скорость: minimal ≈ 9 сек,
+    # default ≈ 40+ сек. Для интерактивного бота по умолчанию minimal. Параметр шлём
+    # ТОЛЬКО reasoning-моделям (gpt-4.1 его не принимает).
+    effort = os.environ.get("OPENAI_REASONING_EFFORT", "minimal")
+    if effort and model.startswith(("gpt-5", "o1", "o3", "o4")):
+        body["reasoning_effort"] = effort
+    req = urllib.request.Request(
+        "https://api.openai.com/v1/chat/completions",
+        data=json.dumps(body).encode("utf-8"),
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=180) as resp:
+            d = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f"OpenAI HTTP {e.code}: {e.read().decode('utf-8', 'replace')[:300]}") from e
+    data = json.loads(d["choices"][0]["message"]["content"])
+    return _result_from_json(data, f"OpenAI {model}")
+
+
+def _tailor_anthropic(vacancy: dict, master_md: str, score_hint: str | None) -> TailorResult | None:
+    """Генерация через Claude API (SDK anthropic). None — если SDK/ключ недоступны."""
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        return None
+    try:
+        import anthropic  # noqa: PLC0415 — опциональная зависимость
+    except ImportError:
+        return None
+
+    model = os.environ.get("ANTHROPIC_MODEL", DEFAULT_MODEL)
+    client = anthropic.Anthropic()
+    resp = client.messages.create(
+        model=model,
+        max_tokens=4000,
+        system=_SYSTEM,
+        messages=[{"role": "user", "content": _build_user(vacancy, master_md, score_hint)}],
+        output_config={"format": {"type": "json_schema", "schema": _SCHEMA}},
+    )
+    text = next((b.text for b in resp.content if b.type == "text"), "")
+    return _result_from_json(json.loads(text), f"Claude {model}")
+
+
+def _tailor_llm(vacancy: dict, master_md: str, score_hint: str | None) -> TailorResult | None:
+    """Выбирает провайдера и генерирует. None — если LLM недоступен."""
+    provider = _provider()
+    if provider == "openai":
+        return _tailor_openai(vacancy, master_md, score_hint)
+    if provider == "anthropic":
+        return _tailor_anthropic(vacancy, master_md, score_hint)
+    return None
 
 
 # --- Шаблонный фолбэк (без LLM) ---------------------------------------------
@@ -161,7 +232,7 @@ def _tailor_template(vacancy: dict, matched_skills: list[str] | None) -> TailorR
         resume_overrides={"title": name, "skill_set": skills, "skills": skills_text},
         cover_letter=cover,
         source="template",
-        notes=["LLM недоступен (нет ANTHROPIC_API_KEY или пакета anthropic) — использован шаблон"],
+        notes=["LLM недоступен (нет ключа OPENAI/ANTHROPIC или пакета) — использован шаблон"],
     )
 
 

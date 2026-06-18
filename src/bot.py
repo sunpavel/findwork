@@ -208,20 +208,25 @@ def _health_text() -> str:
     # Telegram — если это сообщение дошло, значит работает.
     lines.append("• Telegram: ✅ бот отвечает")
 
-    # Anthropic (качество писем).
-    key = bool(os.environ.get("ANTHROPIC_API_KEY"))
-    try:
-        import anthropic  # noqa: F401, PLC0415
-        sdk = True
-    except Exception:  # noqa: BLE001
-        sdk = False
-    if key and sdk:
-        lines.append("• Anthropic (письма): ✅ ключ и SDK на месте")
-    elif key and not sdk:
-        lines.append("• Anthropic (письма): ⚠️ ключ есть, нет пакета `anthropic` → "
-                     "письма по шаблону (`pip install -r requirements.txt`)")
+    # LLM для писем — активный провайдер.
+    prov = tailor_mod._provider()
+    if prov == "openai":
+        model = os.environ.get("OPENAI_MODEL", tailor_mod.OPENAI_DEFAULT_MODEL)
+        lines.append(f"• Письма (LLM): ✅ OpenAI {model}")
+    elif prov == "anthropic":
+        try:
+            import anthropic  # noqa: F401, PLC0415
+            sdk = True
+        except Exception:  # noqa: BLE001
+            sdk = False
+        model = os.environ.get("ANTHROPIC_MODEL", tailor_mod.DEFAULT_MODEL)
+        if sdk:
+            lines.append(f"• Письма (LLM): ✅ Claude {model}")
+        else:
+            lines.append("• Письма (LLM): ⚠️ ключ Claude есть, нет пакета `anthropic` → "
+                         "шаблон (`pip install -r requirements.txt`)")
     else:
-        lines.append("• Anthropic (письма): ⚠️ ключ не задан → письма по шаблону")
+        lines.append("• Письма (LLM): ⚠️ нет ключа OPENAI/ANTHROPIC → письма по шаблону")
 
     # HH — токен приложения (серый путь, нужен для откликов).
     try:
