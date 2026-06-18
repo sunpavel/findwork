@@ -95,6 +95,12 @@ proxy-groups:
     interval: 300
     tolerance: 80
 rules:
+  # HH.ru и Telegram — ВСЕГДА напрямую (с российского IP), даже если попадут в прокси.
+  # Через VPN идут только запросы к LLM (их шлёт в прокси сам код через LLM_PROXY).
+  - DOMAIN-SUFFIX,hh.ru,DIRECT
+  - DOMAIN-SUFFIX,headhunter.ru,DIRECT
+  - DOMAIN-SUFFIX,telegram.org,DIRECT
+  - DOMAIN-SUFFIX,t.me,DIRECT
   - MATCH,PROXY
 YAML
 
