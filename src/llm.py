@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 import urllib.error
 import urllib.request
 
@@ -40,22 +41,38 @@ class LLMError(RuntimeError):
     pass
 
 
-def _post(url: str, headers: dict, payload: dict, timeout: int = 240) -> dict:
-    req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"),
-                                 headers=headers, method="POST")
+def _post(url: str, headers: dict, payload: dict, timeout: int = 240, retries: int = 3) -> dict:
     # LLM_PROXY (http/https-прокси в поддерживаемой стране) — обход гео-блокировок РФ.
     # Без него urllib и так уважает переменные окружения HTTPS_PROXY/HTTP_PROXY.
     proxy = os.environ.get("LLM_PROXY")
     opener = (urllib.request.build_opener(
         urllib.request.ProxyHandler({"http": proxy, "https": proxy})) if proxy else None)
-    try:
-        open_fn = opener.open if opener else urllib.request.urlopen
-        with open_fn(req, timeout=timeout) as resp:
-            return json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        raise LLMError(f"HTTP {e.code}: {e.read().decode('utf-8', 'replace')[:400]}") from e
-    except urllib.error.URLError as e:
-        raise LLMError(f"сеть: {e.reason}") from e
+    open_fn = opener.open if opener else urllib.request.urlopen
+    data = json.dumps(payload).encode("utf-8")
+    last = ""
+    # Бесплатные OpenAI-совместимые шлюзы (OpenRouter) часто отдают 429 — как HTTP-статус
+    # или как 200 с телом {"error": {... code: 429 ...}}. Ретраим с паузой (retry_after).
+    for attempt in range(retries + 1):
+        req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+        try:
+            with open_fn(req, timeout=timeout) as resp:
+                d = json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            text = e.read().decode("utf-8", "replace")
+            if e.code == 429 and attempt < retries:
+                last = text[:120]; time.sleep(min(2 ** attempt, 20)); continue
+            raise LLMError(f"HTTP {e.code}: {text[:400]}") from e
+        except urllib.error.URLError as e:
+            raise LLMError(f"сеть: {e.reason}") from e
+        err = d.get("error")
+        if err:
+            code, msg = err.get("code"), (err.get("message") or "")
+            if code == 429 and attempt < retries:
+                wait = (err.get("metadata") or {}).get("retry_after_seconds") or 2 ** attempt
+                last = msg; time.sleep(min(float(wait), 25)); continue
+            raise LLMError(f"LLM error {code}: {msg[:400]}")
+        return d
+    raise LLMError(f"429 не отпустил за {retries} попыток: {last[:200]}")
 
 
 def _openai(system: str, user: str, *, model: str, max_tokens: int, json_mode: bool) -> str:

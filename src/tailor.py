@@ -22,6 +22,7 @@ import html
 import json
 import os
 import re
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
@@ -166,6 +167,39 @@ def _loads_lenient(text: str) -> dict:
         raise
 
 
+def _openai_chat(url: str, headers: dict, body: dict, *, retries: int = 3) -> str:
+    """POST в /chat/completions с устойчивостью к бесплатным шлюзам.
+
+    Бесплатные модели OpenRouter живут в общем пуле и часто отдают 429
+    ("temporarily rate-limited"): иногда как HTTP-статус, иногда как 200 с
+    телом {"error": {...}}. Здесь и то, и другое распознаём и ретраим с
+    паузой (учитываем retry_after), чтобы письмо не падало на разовом лимите.
+    """
+    req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"),
+                                 headers=headers, method="POST")
+    last = ""
+    for attempt in range(retries + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=180) as resp:
+                d = json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            text = e.read().decode("utf-8", "replace")
+            if e.code == 429 and attempt < retries:
+                last = f"HTTP 429 {text[:120]}"
+                time.sleep(min(2 ** attempt, 20)); continue
+            raise RuntimeError(f"OpenAI HTTP {e.code}: {text[:300]}") from e
+        err = d.get("error")
+        if err:
+            code, msg = err.get("code"), (err.get("message") or "")
+            if code == 429 and attempt < retries:
+                wait = (err.get("metadata") or {}).get("retry_after_seconds") or 2 ** attempt
+                last = msg
+                time.sleep(min(float(wait), 25)); continue
+            raise RuntimeError(f"LLM error {code}: {msg[:300]}")
+        return d["choices"][0]["message"]["content"] or ""
+    raise RuntimeError(f"LLM лимит (429) не отпустил за {retries} попыток: {last[:200]}")
+
+
 def _tailor_openai(vacancy: dict, master_md: str, score_hint: str | None) -> TailorResult | None:
     """Генерация через OpenAI Chat Completions (чистый urllib, без пакета openai).
 
@@ -211,18 +245,9 @@ def _tailor_openai(vacancy: dict, master_md: str, score_hint: str | None) -> Tai
         # для прочих шлюзов заголовки безвредны.
         headers["HTTP-Referer"] = "https://github.com/sunpavel/findwork"
         headers["X-Title"] = "findwork"
-    req = urllib.request.Request(
-        os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/") + "/chat/completions",
-        data=json.dumps(body).encode("utf-8"),
-        headers=headers,
-        method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=180) as resp:
-            d = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        raise RuntimeError(f"OpenAI HTTP {e.code}: {e.read().decode('utf-8', 'replace')[:300]}") from e
-    data = _loads_lenient(d["choices"][0]["message"]["content"])
-    return _result_from_json(data, f"{model}")
+    url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/") + "/chat/completions"
+    content = _openai_chat(url, headers, body)
+    return _result_from_json(_loads_lenient(content), f"{model}")
 
 
 def _tailor_anthropic(vacancy: dict, master_md: str, score_hint: str | None) -> TailorResult | None:
