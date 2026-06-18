@@ -146,43 +146,83 @@ def _provider() -> str:
     return "none"
 
 
+def _loads_lenient(text: str) -> dict:
+    """Разбирает JSON из ответа модели, терпимо к ```json-обёрткам и преамбулам.
+
+    Бесплатные OpenAI-совместимые модели (OpenRouter и т.п.) часто не дают чистый
+    JSON: оборачивают в ```json или добавляют пояснения. Реальный OpenAI со strict
+    json_schema даёт чистый JSON — для него путь тоже отрабатывает.
+    """
+    text = (text or "").strip()
+    m = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, flags=re.S)
+    if m:
+        text = m.group(1)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        i, j = text.find("{"), text.rfind("}")
+        if i != -1 and j > i:
+            return json.loads(text[i:j + 1])
+        raise
+
+
 def _tailor_openai(vacancy: dict, master_md: str, score_hint: str | None) -> TailorResult | None:
-    """Генерация через OpenAI Chat Completions (чистый urllib, без пакета openai)."""
+    """Генерация через OpenAI Chat Completions (чистый urllib, без пакета openai).
+
+    Работает и с реальным OpenAI, и с бесплатными OpenAI-совместимыми шлюзами
+    (OpenRouter и пр.). Признак шлюза — модель вида ``vendor/model[:free]`` (со слешем):
+    такие не понимают ни ``max_completion_tokens``, ни строгий ``json_schema``, поэтому
+    для них шлём ``max_tokens`` и мягкий ``json_object``.
+    """
     key = os.environ.get("OPENAI_API_KEY")
     if not key:
         return None
     model = os.environ.get("OPENAI_MODEL", OPENAI_DEFAULT_MODEL)
+    compat = "/" in model  # OpenRouter/совместимый шлюз, а не api.openai.com
     body = {
         "model": model,
         "messages": [
             {"role": "system", "content": _SYSTEM},
             {"role": "user", "content": _build_user(vacancy, master_md, score_hint)},
         ],
+    }
+    max_out = int(os.environ.get("OPENAI_MAX_TOKENS", "6000"))
+    if compat:
+        body["max_tokens"] = max_out
+        # json_schema strict у большинства free-моделей не поддержан → мягкий json_object
+        # (системный промпт уже требует JSON с нужными полями).
+        body["response_format"] = {"type": "json_object"}
+    else:
         # max_completion_tokens (а не max_tokens) — иначе reasoning-модели (gpt-5) ругаются.
-        "max_completion_tokens": int(os.environ.get("OPENAI_MAX_TOKENS", "6000")),
-        "response_format": {
+        body["max_completion_tokens"] = max_out
+        body["response_format"] = {
             "type": "json_schema",
             "json_schema": {"name": "tailor", "strict": True, "schema": _SCHEMA},
-        },
-    }
+        }
     # У gpt-5/o-моделей глубина раздумий сильно влияет на скорость: minimal ≈ 9 сек,
     # default ≈ 40+ сек. Для интерактивного бота по умолчанию minimal. Параметр шлём
     # ТОЛЬКО reasoning-моделям (gpt-4.1 его не принимает).
     effort = os.environ.get("OPENAI_REASONING_EFFORT", "minimal")
     if effort and model.startswith(("gpt-5", "o1", "o3", "o4")):
         body["reasoning_effort"] = effort
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    if compat:
+        # OpenRouter просит указывать источник запроса (для бесплатной маршрутизации);
+        # для прочих шлюзов заголовки безвредны.
+        headers["HTTP-Referer"] = "https://github.com/sunpavel/findwork"
+        headers["X-Title"] = "findwork"
     req = urllib.request.Request(
         os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/") + "/chat/completions",
         data=json.dumps(body).encode("utf-8"),
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        headers=headers,
         method="POST")
     try:
         with urllib.request.urlopen(req, timeout=180) as resp:
             d = json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         raise RuntimeError(f"OpenAI HTTP {e.code}: {e.read().decode('utf-8', 'replace')[:300]}") from e
-    data = json.loads(d["choices"][0]["message"]["content"])
-    return _result_from_json(data, f"OpenAI {model}")
+    data = _loads_lenient(d["choices"][0]["message"]["content"])
+    return _result_from_json(data, f"{model}")
 
 
 def _tailor_anthropic(vacancy: dict, master_md: str, score_hint: str | None) -> TailorResult | None:

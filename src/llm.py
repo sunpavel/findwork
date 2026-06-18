@@ -62,19 +62,25 @@ def _openai(system: str, user: str, *, model: str, max_tokens: int, json_mode: b
     key = os.environ.get("OPENAI_API_KEY")
     if not key:
         raise LLMError("нет OPENAI_API_KEY")
+    # Модель вида "vendor/model" = бесплатный OpenAI-совместимый шлюз (OpenRouter и т.п.):
+    # такие шлют max_tokens, а не max_completion_tokens (его понимает только api.openai.com).
+    compat = "/" in model
     payload = {
         "model": model,
         "messages": [{"role": "system", "content": system},
                      {"role": "user", "content": user}],
-        "max_completion_tokens": max_tokens,
+        ("max_tokens" if compat else "max_completion_tokens"): max_tokens,
     }
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
     effort = os.environ.get("OPENAI_REASONING_EFFORT", "minimal")
     if effort and model.startswith(("gpt-5", "o1", "o3", "o4")):
         payload["reasoning_effort"] = effort
-    d = _post(_openai_url(), {"Authorization": f"Bearer {key}",
-                           "Content-Type": "application/json"}, payload)
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    if compat:
+        headers["HTTP-Referer"] = "https://github.com/sunpavel/findwork"
+        headers["X-Title"] = "findwork"
+    d = _post(_openai_url(), headers, payload)
     return d["choices"][0]["message"]["content"] or ""
 
 
