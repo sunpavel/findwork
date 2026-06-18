@@ -94,6 +94,8 @@ proxy-groups:
     url: http://www.gstatic.com/generate_204
     interval: 300
     tolerance: 80
+    # Исключаем RU/«Без VPN»/узлы-заглушки (HWID-инструкции) — берём только зарубежные.
+    exclude-filter: "(?i)(без vpn|🇷🇺|russia|росси|рф\\b|hwid|настройк|подписк|обнов|telegram|@|dns-out|direct|直连)"
 rules:
   # HH.ru и Telegram — ВСЕГДА напрямую (с российского IP), даже если попадут в прокси.
   # Через VPN идут только запросы к LLM (их шлёт в прокси сам код через LLM_PROXY).
@@ -138,11 +140,25 @@ echo "узлов из подписки загружено: ${nodes}"
 say "  проверяю выход через прокси…"
 country="$(curl -s --max-time 25 -x "http://127.0.0.1:${PROXY_PORT}" https://ipinfo.io/country 2>/dev/null | tr -d '[:space:]' || true)"
 if [ -z "$country" ]; then
-  warn "прокси не отвечает. Логи: journalctl -u mihomo -n 50 --no-pager; затем systemctl restart mihomo"
+  warn "прокси не отвечает (возможно, после фильтра не осталось зарубежных узлов)."
 elif [ "$country" = "RU" ]; then
-  warn "выход всё ещё RU. Если узлов 0 — формат подписки; если >0 — в подписке нет зарубежных серверов."
+  warn "выход всё ещё RU."
 else
   echo "ok: выход через прокси из страны: $country (не RU — гео-блок обойдён)"
+fi
+
+if [ "$country" = "RU" ] || [ -z "$country" ]; then
+  echo "--- узлы из подписки (диагностика) ---"
+  curl -s --max-time 10 http://127.0.0.1:9090/providers/proxies | "$PY" -c '
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    for p in d.get("providers", {}).get("vpn", {}).get("proxies", []):
+        h = p.get("history") or [{}]
+        print("  ", p.get("name"), "| delay:", h[-1].get("delay", "-"))
+except Exception as e:
+    print("  (не прочитать список:", e, ")")' 2>/dev/null || true
+  warn "Если тут только «Без VPN»/инструкции — подписка HWID-заблокирована (нет реальных серверов)."
 fi
 
 # --- 4. LLM_PROXY в .env -----------------------------------------------------
