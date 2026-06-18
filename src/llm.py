@@ -20,10 +20,20 @@ import re
 import urllib.error
 import urllib.request
 
-OPENAI_URL = "https://api.openai.com/v1/chat/completions"
-ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 OPENAI_DEFAULT_MODEL = "gpt-5"
 ANTHROPIC_DEFAULT_MODEL = "claude-opus-4-8"
+
+
+def _openai_url() -> str:
+    # OPENAI_BASE_URL позволяет указать совместимый прокси-эндпоинт (нужно для РФ,
+    # где api.openai.com отдаёт 403 unsupported_country). Пример: https://api.proxyapi.ru/openai/v1
+    base = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+    return base + "/chat/completions"
+
+
+def _anthropic_url() -> str:
+    base = os.environ.get("ANTHROPIC_BASE_URL", "https://api.anthropic.com").rstrip("/")
+    return base + "/v1/messages"
 
 
 class LLMError(RuntimeError):
@@ -33,8 +43,14 @@ class LLMError(RuntimeError):
 def _post(url: str, headers: dict, payload: dict, timeout: int = 240) -> dict:
     req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"),
                                  headers=headers, method="POST")
+    # LLM_PROXY (http/https-прокси в поддерживаемой стране) — обход гео-блокировок РФ.
+    # Без него urllib и так уважает переменные окружения HTTPS_PROXY/HTTP_PROXY.
+    proxy = os.environ.get("LLM_PROXY")
+    opener = (urllib.request.build_opener(
+        urllib.request.ProxyHandler({"http": proxy, "https": proxy})) if proxy else None)
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        open_fn = opener.open if opener else urllib.request.urlopen
+        with open_fn(req, timeout=timeout) as resp:
             return json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         raise LLMError(f"HTTP {e.code}: {e.read().decode('utf-8', 'replace')[:400]}") from e
@@ -57,7 +73,7 @@ def _openai(system: str, user: str, *, model: str, max_tokens: int, json_mode: b
     effort = os.environ.get("OPENAI_REASONING_EFFORT", "minimal")
     if effort and model.startswith(("gpt-5", "o1", "o3", "o4")):
         payload["reasoning_effort"] = effort
-    d = _post(OPENAI_URL, {"Authorization": f"Bearer {key}",
+    d = _post(_openai_url(), {"Authorization": f"Bearer {key}",
                            "Content-Type": "application/json"}, payload)
     return d["choices"][0]["message"]["content"] or ""
 
@@ -70,7 +86,7 @@ def _anthropic(system: str, user: str, *, model: str, max_tokens: int, json_mode
     if json_mode:
         # префилл "{" заставляет Claude отвечать чистым JSON без преамбулы.
         messages.append({"role": "assistant", "content": "{"})
-    d = _post(ANTHROPIC_URL, {"x-api-key": key, "anthropic-version": "2023-06-01",
+    d = _post(_anthropic_url(), {"x-api-key": key, "anthropic-version": "2023-06-01",
                               "Content-Type": "application/json"},
               {"model": model, "max_tokens": max_tokens, "system": system, "messages": messages})
     text = "".join(b.get("text", "") for b in d.get("content", []) if b.get("type") == "text")

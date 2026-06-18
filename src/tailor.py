@@ -172,7 +172,7 @@ def _tailor_openai(vacancy: dict, master_md: str, score_hint: str | None) -> Tai
     if effort and model.startswith(("gpt-5", "o1", "o3", "o4")):
         body["reasoning_effort"] = effort
     req = urllib.request.Request(
-        "https://api.openai.com/v1/chat/completions",
+        os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/") + "/chat/completions",
         data=json.dumps(body).encode("utf-8"),
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
         method="POST")
