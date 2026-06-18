@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import html
+import json
 import re
 import urllib.request
 
@@ -63,28 +64,67 @@ def _visible_text(html_text: str) -> str:
     return s.strip()
 
 
+def _jsonld_jobposting(html_text: str) -> dict:
+    """Ищет на странице разметку schema.org JobPosting (application/ld+json).
+
+    Большинство job-сайтов кладут туда название, работодателя, описание и регион —
+    это куда надёжнее, чем гадать по тегам.
+    """
+    for m in re.finditer(r'<script[^>]+application/ld\+json[^>]*>(.*?)</script>',
+                         html_text, flags=re.I | re.S):
+        try:
+            data = json.loads(m.group(1).strip())
+        except Exception:  # noqa: BLE001 — кривой JSON на странице не должен ронять нас
+            continue
+        stack = data if isinstance(data, list) else [data]
+        while stack:
+            node = stack.pop()
+            if not isinstance(node, dict):
+                continue
+            if isinstance(node.get("@graph"), list):
+                stack.extend(node["@graph"])
+            if "JobPosting" in str(node.get("@type", "")):
+                return node
+    return {}
+
+
 def fetch_vacancy(url: str, max_chars: int = 6000) -> dict:
     """Скачивает страницу вакансии и собирает словарь в формате, понятном tailor.py."""
     page = _fetch_html(url)
+    job = _jsonld_jobposting(page)
 
-    name = _meta(page, "og:title")
+    name = (job.get("title") or "").strip() or _meta(page, "og:title")
     if not name:
         m = re.search(r"<title[^>]*>(.*?)</title>", page, flags=re.I | re.S)
         name = html.unescape(m.group(1)).strip() if m else "Вакансия"
     name = re.sub(r"\s*[|–—-]\s*(facancy|hh\.ru|вакансия).*$", "", name, flags=re.I).strip()
 
-    employer = _meta(page, "og:site_name")
-    desc = _meta(page, "og:description")
-    body = _visible_text(page)
-    # Берём более полный текст из тела, если он содержательнее og:description.
-    if len(body) > len(desc):
-        desc = body
+    org = job.get("hiringOrganization")
+    employer = (org.get("name", "") if isinstance(org, dict) else "").strip() \
+        or _meta(page, "og:site_name")
+
+    loc = job.get("jobLocation")
+    if isinstance(loc, list):
+        loc = loc[0] if loc else {}
+    area = ""
+    if isinstance(loc, dict):
+        addr = loc.get("address")
+        if isinstance(addr, dict):
+            area = addr.get("addressLocality", "") or addr.get("addressRegion", "")
+
+    # Описание: из JobPosting (часто HTML) → og → видимый текст страницы.
+    desc = _visible_text(job["description"]) if job.get("description") else ""
+    if len(desc) < 200:
+        desc = desc or _meta(page, "og:description")
+        body = _visible_text(page)
+        if len(body) > len(desc):
+            desc = body
     desc = desc[:max_chars].strip()
 
     return {
         "name": name,
         "employer": {"name": employer},
-        "area": {"name": ""},
+        "area": {"name": area},
         "description": desc,
         "key_skills": [],
         "source_url": url,
