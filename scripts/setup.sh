@@ -63,32 +63,37 @@ fi
 echo "ok: $(mihomo -v 2>/dev/null | head -1 || echo mihomo)"
 
 # --- 3. Конфиг mihomo из подписки + systemd ----------------------------------
-say "3/5 Настройка mihomo из твоей подписки"
-mkdir -p /etc/mihomo/providers
+say "3/5 Загружаю узлы из подписки и настраиваю mihomo"
+mkdir -p /etc/mihomo
+# Подписка отдаёт ПОЛНЫЙ clash-конфиг — скачиваем его как файл-источник узлов.
+curl -fsSL -A "clash-meta" "${SUB_URL}" -o /etc/mihomo/sub.yaml || die "не скачалась подписка"
+grep -q 'proxies:' /etc/mihomo/sub.yaml \
+  || die "в подписке нет 'proxies:' (формат не clash). Покажи: head -c 200 /etc/mihomo/sub.yaml"
+
+# Свой конфиг: берём ТОЛЬКО узлы из подписки (как файловый провайдер) и гоним
+# ВЕСЬ трафик через самый быстрый из них (MATCH,PROXY) — детерминированно.
 cat > /etc/mihomo/config.yaml <<YAML
 mixed-port: ${PROXY_PORT}
 allow-lan: false
+bind-address: "127.0.0.1"
 mode: rule
 log-level: warning
+external-controller: "127.0.0.1:9090"
 proxy-providers:
   vpn:
-    type: http
-    url: "${SUB_URL}"
-    interval: 86400
-    path: ./providers/vpn.yaml
-    header:
-      User-Agent: ["clash.meta", "mihomo"]
+    type: file
+    path: ./sub.yaml
     health-check:
       enable: true
-      url: https://www.gstatic.com/generate_204
+      url: http://www.gstatic.com/generate_204
       interval: 300
 proxy-groups:
   - name: PROXY
     type: url-test
     use: [vpn]
-    url: https://www.gstatic.com/generate_204
+    url: http://www.gstatic.com/generate_204
     interval: 300
-    tolerance: 50
+    tolerance: 80
 rules:
   - MATCH,PROXY
 YAML
@@ -109,17 +114,27 @@ WantedBy=multi-user.target
 UNIT
 
 systemctl daemon-reload
-systemctl enable --now mihomo >/dev/null 2>&1 || systemctl restart mihomo
-sleep 6
+systemctl enable mihomo >/dev/null 2>&1 || true
+systemctl restart mihomo
+sleep 10
+
+# Сколько узлов реально загрузилось (через API mihomo) — главный диагностический сигнал.
+nodes="$(curl -s --max-time 10 http://127.0.0.1:9090/providers/proxies 2>/dev/null | "$PY" -c '
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    print(len((d.get("providers", {}).get("vpn", {}) or {}).get("proxies", [])))
+except Exception:
+    print("?")' 2>/dev/null || echo "?")"
+echo "узлов из подписки загружено: ${nodes}"
+[ "$nodes" = "0" ] && warn "узлы не загрузились — проверь формат: head -c 200 /etc/mihomo/sub.yaml"
 
 say "  проверяю выход через прокси…"
 country="$(curl -s --max-time 25 -x "http://127.0.0.1:${PROXY_PORT}" https://ipinfo.io/country 2>/dev/null | tr -d '[:space:]' || true)"
 if [ -z "$country" ]; then
-  warn "прокси пока не отвечает. Логи: journalctl -u mihomo -n 50 --no-pager"
-  warn "Часто помогает подождать минуту (подтягивается подписка) и перезапустить: systemctl restart mihomo"
+  warn "прокси не отвечает. Логи: journalctl -u mihomo -n 50 --no-pager; затем systemctl restart mihomo"
 elif [ "$country" = "RU" ]; then
-  warn "прокси работает, но выходной IP всё ещё RU ($country) — OpenAI заблокирует."
-  warn "Проверь, что в подписке есть зарубежные серверы."
+  warn "выход всё ещё RU. Если узлов 0 — формат подписки; если >0 — в подписке нет зарубежных серверов."
 else
   echo "ok: выход через прокси из страны: $country (не RU — гео-блок обойдён)"
 fi
