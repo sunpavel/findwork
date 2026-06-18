@@ -59,20 +59,28 @@ def _user_agent() -> str:
 
 
 def _tool_state_token() -> str | None:
-    """Пробуем прочитать токен из состояния hh-applicant-tool, если он есть."""
+    """Пробуем прочитать токен из состояния hh-applicant-tool, если он есть.
+
+    Форматы у разных версий разные:
+      • текущий — config.json со структурой {"token": {"access_token": ...}};
+      • старые — state.json / token.json (плоско или во вложенном "token").
+    Если токен протух — обнови его (`hh-applicant-tool refresh`) или повтори
+    `hh-applicant-tool authorize`.
+    """
     candidates = []
     if os.environ.get("HH_APP_TOOL_STATE"):
         candidates.append(Path(os.environ["HH_APP_TOOL_STATE"]))
-    home = Path.home()
+    cfg_dir = Path.home() / ".config" / "hh-applicant-tool"
     candidates += [
-        home / ".config" / "hh-applicant-tool" / "state.json",
-        home / ".config" / "hh-applicant-tool" / "token.json",
+        cfg_dir / "config.json",   # текущий формат hh-applicant-tool
+        cfg_dir / "state.json",    # старые форматы — на всякий случай
+        cfg_dir / "token.json",
     ]
     for path in candidates:
         try:
             if path.exists():
                 data = json.loads(path.read_text(encoding="utf-8"))
-                # hh-applicant-tool хранит токен либо плоско, либо во вложенном объекте.
+                # токен либо плоско, либо во вложенном объекте "token".
                 tok = data.get("access_token") or (data.get("token") or {}).get("access_token")
                 if tok:
                     return tok
