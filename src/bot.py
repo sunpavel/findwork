@@ -201,16 +201,16 @@ def _handle_hh(chat_id, target: str) -> None:
         return
 
     token = _store_pending(p)
-    overrides = p.resume_overrides
-    skills = ", ".join(overrides.get("skill_set", [])[:12])
     text = (
         f"🎯 *{p.title}* — {p.company}\n"
         f"Скор: *{p.score}/100*\n\n"
-        f"📄 *Резюме под вакансию:* «{overrides.get('title', '')}»\n"
-        f"_Навыки:_ {skills}\n\n"
-        f"✉️ *Сопроводительное:*\n{p.cover_letter}\n\n"
-        f"_Текст: {p.tailor_source}._ Отправить отклик этим резюме и письмом?"
+        f"📄 Откликнусь резюме: «{p.resume_title or '—'}»\n"
+        f"✉️ *Сопроводительное (под вакансию):*\n{p.cover_letter}\n"
     )
+    if p.warnings:
+        text += "\n⚠️ *Проверь перед отправкой* (мог не сверить с мастер-резюме):\n- " \
+                + "\n- ".join(p.warnings) + "\n"
+    text += f"\n_Текст: {p.tailor_source}._ Отправить отклик?"
     buttons = [[
         {"text": "✅ Откликнуться", "callback_data": f"a:{token}"},
         {"text": "✖️ Отмена", "callback_data": f"c:{token}"},
@@ -237,6 +237,18 @@ def _handle_confirm(chat_id, token: str) -> None:
         return
     notes = ("\n\n_" + "; ".join(res.notes) + "_") if res.notes else ""
     send(chat_id, res.message + notes)
+
+    # HH откликается существующим резюме, но адаптированное (с фото) под вакансию
+    # отдаём файлом — можно при желании обновить им резюме на HH вручную.
+    if res.ok and getattr(p, "resume", None):
+        try:
+            import resume_doc  # noqa: PLC0415 — нужен fpdf2/python-docx
+            with tempfile.TemporaryDirectory() as d:
+                pdf, docx = resume_doc.render_both(p.resume, d)
+                send_document(chat_id, pdf, "📄 Адаптированное резюме под вакансию (с фото)")
+                send_document(chat_id, docx, "✏️ DOCX — можешь обновить им своё резюме на HH вручную")
+        except Exception as e:  # noqa: BLE001 — файл не критичен для самого отклика
+            print(f"[bot] resume file render failed: {e}", file=sys.stderr)
 
 
 # --- Ассистент (facancy.ru и пр.): материалы без отправки ---------------------

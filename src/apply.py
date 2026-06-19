@@ -23,9 +23,11 @@
   • dry-run — всё считаем и показываем, но НИЧЕГО не создаём и не отправляем.
 
 Режимы резюме (APPLY_RESUME_MODE):
-  • clone (по умолчанию) — НОВОЕ резюме под вакансию на основе базового;
-  • update — правим базовое резюме под вакансию (без размножения резюме);
-  • existing — откликаемся базовым резюме как есть (адаптируем только письмо).
+  • existing (по умолчанию) — откликаемся существующим резюме + адаптированным письмом.
+    HH запрещает создавать резюме через API (POST /resumes → 405), поэтому это
+    единственный надёжный путь; адаптированное резюме отдаём пользователю файлом.
+  • update — правим базовое резюме под вакансию (PUT; если HH запретит — фолбэк на existing);
+  • clone — пробуем создать НОВОЕ резюме (POST; если HH запретит — фолбэк на existing).
 
 Использование:
   python3 src/apply.py <url_или_id> [--dry-run]
@@ -45,6 +47,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # запуск из любого места
 
+import re
+
+import career_agent
 import hh_app
 import tailor as tailor_mod
 from relevance import load_profile, score_vacancy
@@ -152,15 +157,30 @@ def _vacancy_salary(vacancy: dict) -> dict | None:
             "currency": sal.get("currency") or "RUR"}
 
 
-def _pick_base_resume_id() -> str:
-    """Базовое резюме: из HH_BASE_RESUME_ID или первое из списка соискателя."""
-    env_id = os.environ.get("HH_BASE_RESUME_ID")
-    if env_id:
-        return env_id
+def _words(s: str) -> set[str]:
+    return {w for w in re.findall(r"\w+", (s or "").lower()) if len(w) > 3}
+
+
+def _pick_base_resume(vacancy: dict | None = None) -> dict:
+    """Существующее резюме соискателя, которым откликаемся.
+
+    HH запрещает создавать резюме через API (POST /resumes → 405), поэтому отклик
+    идёт одним из уже опубликованных резюме. Берём HH_BASE_RESUME_ID, иначе резюме,
+    чьё название ближе всего к вакансии, иначе первое."""
     resumes = hh_app.list_resumes()
     if not resumes:
-        raise hh_app.HHAppError("у соискателя нет резюме — нечего адаптировать")
-    return resumes[0]["id"]
+        raise hh_app.HHAppError("у соискателя нет резюме на HH — нечем откликаться")
+    env_id = os.environ.get("HH_BASE_RESUME_ID")
+    if env_id:
+        for r in resumes:
+            if r.get("id") == env_id:
+                return r
+    if vacancy:
+        vac_words = _words(vacancy.get("name", ""))
+        best = max(resumes, key=lambda r: len(vac_words & _words(r.get("title", ""))))
+        if vac_words & _words(best.get("title", "")):
+            return best
+    return resumes[0]
 
 
 @dataclass
@@ -173,6 +193,10 @@ class Prepared:
     resume_overrides: dict = field(default_factory=dict)
     cover_letter: str = ""
     tailor_source: str = ""
+    resume_id: str | None = None   # существующее резюме HH, которым откликаемся
+    resume_title: str = ""         # его название (для показа в боте)
+    resume: dict = field(default_factory=dict)   # структурное адаптированное резюме (для файла)
+    warnings: list[str] = field(default_factory=list)  # факты на ручную проверку
     blocked: bool = False          # нельзя отправлять (пауза/дубль/лимит/порог)
     block_reason: str = ""
     notes: list[str] = field(default_factory=list)
@@ -216,12 +240,32 @@ def prepare(url_or_id: str, *, min_score: int | None = None) -> Prepared:
         p.block_reason = f"🔻 Скор {score.score}/100 ниже порога {min_score}."
         return p
 
-    tr = tailor_mod.tailor(vacancy, score_hint=score.explain(),
-                           matched_skills=score.matched_skills)
-    p.resume_overrides = tr.resume_overrides
-    p.cover_letter = tr.cover_letter
-    p.tailor_source = tr.source
-    p.notes += tr.notes
+    # Резюме, которым откликнемся (HH создавать новое не даёт — берём существующее).
+    base = _pick_base_resume(vacancy)
+    p.resume_id = base.get("id")
+    p.resume_title = base.get("title", "")
+
+    # Генерация премиум-пайплайном (n8n/ChatGPT) с QA: анти-галлюцинация + ATS-дотяжка.
+    # Если он недоступен — мягкий фолбэк на простой tailor, чтобы отклик не падал.
+    try:
+        app = career_agent.prepare_application(vacancy)
+        p.cover_letter = app.cover_letter
+        p.resume = app.resume
+        p.warnings = app.warnings
+        p.resume_overrides = {
+            "title": app.resume.get("target_title", "") or p.title,
+            "skill_set": app.resume.get("competencies", []),
+            "skills": app.resume.get("profile", ""),
+        }
+        p.tailor_source = ("; ".join(app.notes)[:90]) or "llm"
+        p.notes += app.notes
+    except Exception as e:  # noqa: BLE001 — фолбэк на простой tailor
+        tr = tailor_mod.tailor(vacancy, score_hint=score.explain(),
+                               matched_skills=score.matched_skills)
+        p.resume_overrides = tr.resume_overrides
+        p.cover_letter = tr.cover_letter
+        p.tailor_source = tr.source
+        p.notes += tr.notes + [f"career_agent недоступен ({e}) — простой tailor"]
     return p
 
 
@@ -236,18 +280,29 @@ def commit(p: Prepared) -> ApplyResult:
         res.message = reason
         return res
 
-    mode = os.environ.get("APPLY_RESUME_MODE", "clone").lower()
-    base_id = _pick_base_resume_id()
-    if mode == "existing":
-        resume_id = base_id
-        res.notes.append("режим existing — базовое резюме без правок")
-    elif mode == "update":
-        hh_app.update_resume(base_id, p.resume_overrides)
-        resume_id = base_id
-        res.notes.append("режим update — базовое резюме обновлено под вакансию")
-    else:  # clone
-        resume_id = hh_app.clone_resume(base_id, p.resume_overrides)
-        res.notes.append(f"режим clone — создано резюме {resume_id} под вакансию")
+    mode = os.environ.get("APPLY_RESUME_MODE", "existing").lower()
+    resume_id = p.resume_id or _pick_base_resume(None).get("id")
+    if mode == "update":
+        try:
+            hh_app.update_resume(resume_id, p.resume_overrides)
+            res.notes.append("режим update — резюме обновлено под вакансию")
+        except hh_app.HHAppError as e:
+            if e.status in (403, 405):  # HH не даёт править через API — откликаемся как есть
+                res.notes.append(f"update запрещён HH ({e.status}) — отклик существующим резюме")
+            else:
+                raise
+    elif mode == "clone":
+        try:
+            resume_id = hh_app.clone_resume(resume_id, p.resume_overrides)
+            res.notes.append(f"режим clone — создано резюме {resume_id}")
+        except hh_app.HHAppError as e:
+            if e.status in (403, 405):  # HH не даёт создавать резюме — откликаемся существующим
+                resume_id = p.resume_id or resume_id
+                res.notes.append(f"clone запрещён HH ({e.status}) — отклик существующим резюме")
+            else:
+                raise
+    else:  # existing (по умолчанию) — HH разрешает только этот путь
+        res.notes.append(f"режим existing — резюме «{p.resume_title or resume_id}»")
     res.resume_id = resume_id
 
     time.sleep(float(os.environ.get("APPLY_PAUSE_SEC", "2")))  # вежливая пауза
