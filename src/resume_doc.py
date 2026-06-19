@@ -39,6 +39,16 @@ def _find_fonts() -> tuple[str, str]:
     return reg, bold
 
 
+def _find_photo() -> str:
+    """Путь к фото кандидата для резюме, если задано/существует.
+
+    Берётся из RESUME_PHOTO, иначе resume/photo.jpg рядом с мастер-резюме.
+    Фото кладёт бот, когда ты присылаешь его в Telegram."""
+    p = os.environ.get("RESUME_PHOTO") or os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "resume", "photo.jpg")
+    return p if p and os.path.exists(p) else ""
+
+
 def _contact_line(r: dict) -> str:
     c = r.get("contacts", {})
     bits = [c.get("location", ""), c.get("phone", ""), c.get("email", ""), c.get("telegram", "")]
@@ -87,18 +97,27 @@ def render_pdf(r: dict, path: str) -> str:
             if it:
                 pdf.multi_cell(0, 5, f"- {it}", new_x="LMARGIN", new_y="NEXT")
 
-    # Шапка
+    # Шапка. Фото — в правый верхний угол; текст шапки сужаем, чтобы не залезал под него.
+    photo = _find_photo()
+    if photo:
+        try:
+            pdf.image(photo, x=158, y=12, w=34, h=42)
+        except Exception:  # noqa: BLE001 — битый/неподдерживаемый файл: просто без фото
+            photo = ""
+    head_w = 138 if photo else 0
     pdf.set_font("dj", "B", 17)
-    pdf.cell(0, 9, r.get("full_name", ""), new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(head_w, 9, r.get("full_name", ""), new_x="LMARGIN", new_y="NEXT")
     if r.get("target_title"):
         pdf.set_font("dj", "B", 12)
         pdf.set_text_color(70, 70, 70)
-        pdf.cell(0, 7, r["target_title"], new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(head_w, 7, r["target_title"], new_x="LMARGIN", new_y="NEXT")
         pdf.set_text_color(0, 0, 0)
     line = _contact_line(r)
     if line:
         pdf.set_font("dj", "", 9)
-        pdf.multi_cell(0, 5, line, new_x="LMARGIN", new_y="NEXT")
+        pdf.multi_cell(head_w or 0, 5, line, new_x="LMARGIN", new_y="NEXT")
+    if photo:  # опускаемся ниже фото, чтобы первый раздел не перекрывал картинку
+        pdf.set_y(max(pdf.get_y(), 58))
 
     if r.get("profile"):
         header("Профессиональный профиль")
@@ -139,12 +158,22 @@ def render_pdf(r: dict, path: str) -> str:
 
 def render_docx(r: dict, path: str) -> str:
     from docx import Document  # noqa: PLC0415
-    from docx.shared import Pt, RGBColor  # noqa: PLC0415
+    from docx.enum.text import WD_ALIGN_PARAGRAPH  # noqa: PLC0415
+    from docx.shared import Inches, Pt, RGBColor  # noqa: PLC0415
 
     doc = Document()
     normal = doc.styles["Normal"].font
     normal.name = "Calibri"
     normal.size = Pt(10)
+
+    photo = _find_photo()
+    if photo:
+        try:
+            pp = doc.add_paragraph()
+            pp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            pp.add_run().add_picture(photo, width=Inches(1.3))
+        except Exception:  # noqa: BLE001 — битый файл: резюме без фото
+            pass
 
     def header(title: str):
         p = doc.add_paragraph()

@@ -45,7 +45,8 @@ HELP = (
     "• Пришли *ссылку на вакансию HH* → подготовлю резюме и письмо и спрошу подтверждение "
     "перед откликом.\n"
     "• Пришли *ссылку facancy.ru* (или другого сайта) → пришлю тебе резюме и письмо, "
-    "отклик сделаешь сам на сайте.\n\n"
+    "отклик сделаешь сам на сайте.\n"
+    "• Пришли *фото* → добавлю его в резюме (PDF и DOCX).\n\n"
     "Команды: /health · /status · /pause · /resume · /dry <ссылка> · /help"
 )
 
@@ -108,6 +109,43 @@ def send_document(chat_id, path: str, caption: str = "") -> None:
             r.read()
     except Exception as e:  # noqa: BLE001
         print(f"[bot] sendDocument error: {e}", file=sys.stderr)
+
+
+RESUME_PHOTO = Path(__file__).resolve().parent.parent / "resume" / "photo.jpg"
+
+
+def _download_telegram_file(file_id: str, dest: Path) -> None:
+    """Скачивает файл из Telegram (getFile → download) в dest."""
+    info = _api("getFile", {"file_id": file_id}, timeout=20)
+    file_path = (info.get("result") or {}).get("file_path")
+    if not file_path:
+        raise RuntimeError("Telegram не вернул file_path")
+    url = f"https://api.telegram.org/file/bot{_token()}/{file_path}"
+    with urllib.request.urlopen(url, timeout=60) as r:
+        data = r.read()
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(data)
+
+
+def _handle_photo(chat_id, msg: dict) -> bool:
+    """Сохраняет присланное фото как фото для резюме. Возвращает True, если фото было."""
+    file_id = ""
+    if msg.get("photo"):
+        file_id = msg["photo"][-1]["file_id"]  # последний размер — самый крупный
+    else:
+        doc = msg.get("document") or {}
+        if str(doc.get("mime_type", "")).startswith("image/"):
+            file_id = doc.get("file_id", "")
+    if not file_id:
+        return False
+    try:
+        _download_telegram_file(file_id, RESUME_PHOTO)
+    except Exception as e:  # noqa: BLE001
+        send(chat_id, f"⚠️ Не смог сохранить фото: {e}")
+        return True
+    send(chat_id, "📸 Фото сохранил — добавлю его в резюме (PDF и DOCX).\n"
+                  "Теперь пришли ссылку на вакансию — пришлю резюме уже с фото.")
+    return True
 
 
 def _answer_callback(cb_id: str, text: str = "") -> None:
@@ -308,6 +346,8 @@ def _handle_message(msg: dict) -> None:
     allowed = _chat_id()
     if allowed and str(chat_id) != str(allowed):
         print(f"[bot] игнор сообщения из чата {chat_id} (разрешён {allowed})", file=sys.stderr)
+        return
+    if _handle_photo(chat_id, msg):  # прислали фото для резюме
         return
     text = (msg.get("text") or "").strip()
     if not text:
