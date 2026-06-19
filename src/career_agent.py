@@ -240,7 +240,9 @@ def _single_pass() -> bool:
         return True
     if flag in ("0", "false", "no"):
         return False
-    _, wmodel = _writer_cfg()
+    prov, wmodel = _writer_cfg()
+    if prov == "n8n":
+        return False  # премиум-путь (ChatGPT через n8n) — всегда полный двухагентный цикл
     model = wmodel or os.environ.get("OPENAI_MODEL", "")
     return "/" in model
 
