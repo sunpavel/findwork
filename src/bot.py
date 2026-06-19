@@ -157,6 +157,21 @@ def _answer_callback(cb_id: str, text: str = "") -> None:
         print(f"[bot] answerCallback error: {e}", file=sys.stderr)
 
 
+STATE_DIR = Path(__file__).resolve().parent.parent / "state"
+
+
+def _record_feedback(vac_id: str, sentiment: str) -> None:
+    """Логируем 👍/👎 по вакансии (state/feedback.jsonl) — топливо для будущей
+    подстройки подбора (поднимать похожее на 👍, занижать похожее на 👎)."""
+    try:
+        STATE_DIR.mkdir(exist_ok=True)
+        rec = {"ts": int(time.time()), "id": vac_id, "sentiment": sentiment}
+        with open(STATE_DIR / "feedback.jsonl", "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception as e:  # noqa: BLE001
+        print(f"[bot] feedback write error: {e}", file=sys.stderr)
+
+
 # --- классификация входящего --------------------------------------------------
 
 _URL_RE = re.compile(r"https?://\S+", re.I)
@@ -410,7 +425,10 @@ def _handle_message(msg: dict) -> None:
     if not text:
         return
 
-    if text in ("/start", "/help"):
+    if text.startswith("/start ") and text.split(maxsplit=1)[1].strip().startswith("apply_"):
+        # deep-link из подборки: t.me/Solarhh_bot?start=apply_<hh-id>
+        _handle_hh(chat_id, text.split(maxsplit=1)[1].strip()[len("apply_"):])
+    elif text in ("/start", "/help"):
         send(chat_id, HELP)
     elif text == "/health":
         try:
@@ -458,12 +476,26 @@ def _handle_callback(cb: dict) -> None:
         _answer_callback(cb.get("id", ""), "Нет доступа")
         return
     data = cb.get("data", "")
-    _answer_callback(cb.get("id", ""))
-    if data.startswith("a:"):
+    # Кнопки из подборки (шлёт n8n тем же ботом): ap: — готовь отклик по hh-id,
+    # up:/dn: — обратная связь 👍/👎. И старые a:/c: — подтверждение/отмена отклика.
+    if data.startswith("ap:"):
+        _answer_callback(cb.get("id", ""), "Готовлю отклик…")
+        _handle_hh(chat_id, data[3:])
+    elif data.startswith("up:"):
+        _record_feedback(data[3:], "up")
+        _answer_callback(cb.get("id", ""), "👍 Учту — больше похожего")
+    elif data.startswith("dn:"):
+        _record_feedback(data[3:], "down")
+        _answer_callback(cb.get("id", ""), "👎 Учту — меньше похожего")
+    elif data.startswith("a:"):
+        _answer_callback(cb.get("id", ""))
         _handle_confirm(chat_id, data[2:])
     elif data.startswith("c:"):
+        _answer_callback(cb.get("id", ""))
         _PENDING.pop(data[2:], None)
         send(chat_id, "✖️ Отменено — отклик не отправлен.")
+    else:
+        _answer_callback(cb.get("id", ""))
 
 
 def run() -> int:
