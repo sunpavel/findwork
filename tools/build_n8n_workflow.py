@@ -14,9 +14,12 @@
 
 Устойчивость: токен кэшируется; дедуп по id; все «обогащающие» узлы — onError continue.
 
+Вебхук приёма откликов от бота: POST /webhook/findwork-applied {"applied_ids":[...]} →
+staticData (score+dedup исключает их). Опц. секрет N8N_APPLIED_TOKEN (заголовок X-Findwork-Token).
+
 Запуск:
   N8N_URL=... N8N_KEY=... HH_CLIENT_ID=... HH_CLIENT_SECRET=... HH_STATIC_TOKEN=<seed> \
-  [N8N_WF_ID=<id>] [N8N_ACTIVATE=1] python3 tools/build_n8n_workflow.py
+  [N8N_APPLIED_TOKEN=<секрет>] [N8N_WF_ID=<id>] [N8N_ACTIVATE=1] python3 tools/build_n8n_workflow.py
 """
 import json
 import os
@@ -270,6 +273,26 @@ return rows.map(v=>{ let b=v.score+'/100 · '+v.name+'\n';
 '''
 
 
+# Вебхук приёма истории откликов от бота (у бота личный токен HH). Кладёт hh-id в staticData,
+# откуда их читает score+dedup. Опц. общий секрет N8N_APPLIED_TOKEN (заголовок X-Findwork-Token).
+APPLIED_SYNC_JS = r'''
+const store=$getWorkflowStaticData('global');
+const item=($input.first()&&$input.first().json)||{};
+const SECRET='__APPLIED_TOKEN__';
+const hdrs=item.headers||{};
+if(SECRET && (hdrs['x-findwork-token']||hdrs['X-Findwork-Token'])!==SECRET){
+  return [{json:{ok:false, error:'unauthorized'}}];
+}
+const b=(item.body!==undefined?item.body:item)||{};
+let ids=b.applied_ids||b.ids||[];
+if(!Array.isArray(ids)) ids=[];
+const cur=new Set(store.applied_ids||[]);
+for(const x of ids){ if(x){ const s=String(x); cur.add(s.indexOf('hh-')===0?s:('hh-'+s)); } }
+store.applied_ids=Array.from(cur).slice(-8000);
+return [{json:{ok:true, stored:store.applied_ids.length}}];
+'''
+
+
 def nid():
     return str(uuid.uuid4())
 
@@ -366,9 +389,19 @@ def build():
                     [780, 560], creds={"telegramApi": TELEGRAM_CRED},
                     extra={"retryOnFail": True, "maxTries": 3, "waitBetweenTries": 2000})
 
+    # Вебхук приёма откликов от бота → staticData (отдельный триггер, та же staticData воркфлоу).
+    n_sync_wh = node("Webhook: applied", "n8n-nodes-base.webhook", 2,
+                     {"httpMethod": "POST", "path": "findwork-applied", "responseMode": "lastNode",
+                      "options": {}}, [-1000, 760], extra={"webhookId": nid()})
+    n_sync_code = node("store applied", "n8n-nodes-base.code", 2,
+                       {"jsCode": APPLIED_SYNC_JS.replace(
+                           "__APPLIED_TOKEN__", os.environ.get("N8N_APPLIED_TOKEN", ""))},
+                       [-780, 760])
+
     nodes = [n_manual, n_sched, n_today, n_mint, n_pick, n_apps, n_hh1, n_hh2, n_merge,
              n_list, n_getvac, n_llm, n_build, n_tg,
-             n_fac, n_fac_llm, n_fac_build, n_fac_tg]
+             n_fac, n_fac_llm, n_fac_build, n_fac_tg,
+             n_sync_wh, n_sync_code]
     connections = {}
 
     def add(a, b, in_idx=0):
@@ -408,6 +441,8 @@ def build():
     add(n_fac, n_fac_llm)
     add(n_fac_llm, n_fac_build)
     add(n_fac_build, n_fac_tg)
+    # ветка приёма откликов от бота (независимый триггер)
+    add(n_sync_wh, n_sync_code)
 
     return {"name": "hh.ru — findwork (скоринг)", "nodes": nodes, "connections": connections,
             "settings": {"executionOrder": "v1", "timezone": "Europe/Moscow"}}

@@ -24,6 +24,7 @@ import os
 import re
 import sys
 import tempfile
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -252,6 +253,9 @@ def _handle_confirm(chat_id, token: str) -> None:
         return
     notes = ("\n\n_" + "; ".join(res.notes) + "_") if res.notes else ""
     send(chat_id, res.message + notes)
+
+    if res.ok:
+        _push_applied_safe()   # сразу обновим n8n, чтобы вакансия пропала из дайджеста
 
     # HH откликается существующим резюме, но адаптированное (с фото) под вакансию
     # отдаём файлом — можно при желании обновить им резюме на HH вручную.
@@ -498,6 +502,37 @@ def _handle_callback(cb: dict) -> None:
         _answer_callback(cb.get("id", ""))
 
 
+def _push_applied_safe() -> None:
+    """Немедленный best-effort пуш истории откликов в n8n. Никогда не роняет UX бота."""
+    try:
+        import n8n_sync  # noqa: PLC0415
+        n8n_sync.push_applied()
+    except Exception as e:  # noqa: BLE001
+        print(f"[bot] applied-sync (после отклика) error: {e}", file=sys.stderr)
+
+
+def _applied_sync_loop(interval: int) -> None:
+    """Фоновый пуш истории откликов HH в n8n — чтобы дайджест не показывал откликнутые."""
+    import n8n_sync  # noqa: PLC0415
+    while True:
+        try:
+            n = n8n_sync.push_applied()
+            if n is not None:
+                print(f"[bot] applied-sync → n8n: {n} откликнутых")
+        except Exception as e:  # noqa: BLE001
+            print(f"[bot] applied-sync error: {e}", file=sys.stderr)
+        time.sleep(interval)
+
+
+def _start_applied_sync() -> None:
+    """Запускает фоновый пуш, если задан вебхук n8n (N8N_APPLIED_URL). По умолчанию раз в 2ч."""
+    if not os.environ.get("N8N_APPLIED_URL", "").strip():
+        return
+    interval = int(os.environ.get("APPLIED_SYNC_SEC", "7200"))   # 2 часа (как каденция дайджеста)
+    threading.Thread(target=_applied_sync_loop, args=(interval,), daemon=True).start()
+    print(f"[bot] applied-sync включён (каждые {interval}s)")
+
+
 def run() -> int:
     print("[bot] запуск long-polling… (Ctrl+C для выхода)")
     if _chat_id():
@@ -505,6 +540,7 @@ def run() -> int:
             send(_chat_id(), "🤖 findwork-бот на связи. Пришли ссылку на вакансию или /help.")
         except Exception:  # noqa: BLE001
             pass
+    _start_applied_sync()
     offset = None
     while True:
         try:
