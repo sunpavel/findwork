@@ -64,6 +64,8 @@ _PCT = re.compile(r"([+\-]?\d[\d  .,]*)\s*%")
 _MONEY = re.compile(r"(\d[\d  .,]*)\s*(млрд|млн|тыс)\b")
 _RUB = re.compile(r"(\d[\d  .,]*)\s*(?:₽|руб)")
 _MULT = re.compile(r"(?:в\s+)?(\d[\d.,]*)\s*раз")
+_XMULT = re.compile(r"[x×](\d[\d.,]*)")          # ×8 / x8 — тот же смысл, что «в 8 раз»
+_TOP = re.compile(r"топ[-\s]?(\d+)")             # Топ-5 — сильная метрика позиционирования
 # Стаж/возраст: 1–2 значные числа + «лет/год…» (любой падеж: годами, годов, году).
 # Ограничение в 2 цифры отсекает календарные годы («в 2020 году» — не метрика стажа).
 _YEARS = re.compile(r"(\d{1,2})\+?\s*(?:лет|год\w*)")
@@ -88,6 +90,10 @@ def claims(text: str) -> dict[tuple[str, str], str]:
         add(m.group(1), "₽", m.group(0))
     for m in _MULT.finditer(t):
         add(m.group(1), "раз", m.group(0))
+    for m in _XMULT.finditer(t):
+        add(m.group(1), "раз", m.group(0))
+    for m in _TOP.finditer(t):
+        add(m.group(1), "топ", m.group(0))
     for m in _YEARS.finditer(t):
         add(m.group(1), "лет", m.group(0))
     for m in _COUNT.finditer(t):
@@ -106,6 +112,20 @@ def figures_to_check(cover_letter: str, resume: dict, master_md: str, limit: int
         if key not in master_keys and orig not in res:
             res.append(orig)
     return res[:limit]
+
+
+def letter_metrics(cover_letter: str, master_md: str) -> list[str]:
+    """Числовые метрики письма, ПОДТВЕРЖДЁННЫЕ мастер-резюме (полезная конкретика).
+
+    Зеркало figures_to_check: там — числа-выдумки (которых нет в мастере), здесь наоборот —
+    «хорошие» числа, взятые из мастер-резюме. Если их мало, письмо водянистое и нужна
+    дотяжка конкретикой (см. career_agent._qa_pass)."""
+    master_keys = set(claims(master_md).keys())
+    out: list[str] = []
+    for key, orig in claims(cover_letter).items():
+        if key in master_keys and orig not in out:
+            out.append(orig)
+    return out
 
 
 def unknown_companies(resume: dict, master_md: str, limit: int = 6) -> list[str]:
