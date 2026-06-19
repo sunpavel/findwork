@@ -290,6 +290,20 @@ def _handle_assist(chat_id, url: str) -> None:
 
 # --- здоровье/диагностика -----------------------------------------------------
 
+def _build_marker() -> str:
+    """Текущий коммит на сервере (хэш + дата) — видно в /health, чтобы убедиться,
+    что авто-деплой подтянул свежую версию. Без git — отдаём '?'."""
+    import subprocess  # noqa: PLC0415
+    try:
+        repo = str(Path(__file__).resolve().parent.parent)
+        out = subprocess.run(
+            ["git", "-C", repo, "log", "-1", "--format=%h · %cd", "--date=format:%Y-%m-%d %H:%M"],
+            capture_output=True, text=True, timeout=5)
+        return out.stdout.strip() or "?"
+    except Exception:  # noqa: BLE001
+        return "?"
+
+
 def _health_text() -> str:
     """Что подключено: Telegram / Anthropic / HH — видно прямо в чате."""
     lines = ["🩺 *Проверка подключений*", ""]
@@ -336,6 +350,7 @@ def _health_text() -> str:
     lines.append("")
     lines.append(f"Пауза: {paused} · лимит/день: {apply_mod.daily_limit()} · "
                  f"ждут подтверждения: {len(_PENDING)}")
+    lines.append(f"Сборка (деплой): {_build_marker()}")
     return "\n".join(lines)
 
 
