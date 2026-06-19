@@ -228,10 +228,24 @@ def hh_source(profile: dict, since_days: int = 2, **_) -> list[dict]:
     return result
 
 
+def tgchannels_source(profile: dict, **_) -> list[dict]:
+    """Вакансии из публичных Telegram-каналов (см. src/webchan.py).
+
+    Список каналов — из env TG_CHANNELS="@channel1,@channel2" (хендлы хедхантерских/
+    профильных каналов). Без списка источник пуст. Релевантность отсеет нерелевантное."""
+    import os  # noqa: PLC0415
+    import webchan  # noqa: PLC0415
+    channels = [c.strip() for c in os.environ.get("TG_CHANNELS", "").split(",") if c.strip()]
+    if not channels:
+        return []
+    return webchan.channel_vacancies(channels)
+
+
 _REGISTRY: dict[str, Callable[..., list[dict]]] = {
     "sample": sample_source,
     "trudvsem": trudvsem_source,
     "hh": hh_source,
+    "tgchannels": tgchannels_source,
 }
 
 
