@@ -67,12 +67,17 @@ STRATEGIST_SYSTEM = """Ты — AI-карьерный агент уровня Ex
    универсальной каши); опыт — только роли, помогающие пройти фильтр, переписанные под вакансию,
    без выдуманных должностей/компаний/сроков/результатов; достижения — только проверяемые и
    безопасно атрибутированные.
-6) Сопроводительное письмо: короткое, сильное, для быстрого просмотра HR. Логика: приветствие →
+6) Сопроводительное письмо: короткое, сильное, для быстрого просмотра HR. Логика: БЕЗ
+   обращения-штампа — сразу сильное первое предложение по сути (зацепка под компанию/задачу) →
    позиционирование под вакансию → почему опыт отвечает главной бизнес-задаче → блок совпадений
    с задачами роли В НАСТОЯЩЕМ времени (управляю, строю, развиваю, внедряю, формирую, анализирую,
    отвечаю) → блок результатов В ПРОШЕДШЕМ времени (внедрил, построил, развил, запустил, снизил,
    повысил; для командных результатов — корректная атрибуция) → короткий абзац мотивации именно
-   к этой роли → контактный блок. Объём 180–260 слов.
+   к этой роли → подпись «Павел Скворцов». Объём 180–260 слов.
+   ОБРАЩЕНИЕ: имя нанимающего неизвестно, поэтому НЕ выдумывай обращение. НЕЛЬЗЯ «Уважаемый
+   руководитель <Компании>», «Уважаемый HR», «Здравствуйте, уважаемые коллеги». Либо вообще без
+   обращения (сразу с сути), либо нейтральное «Здравствуйте!». Название компании вплети в первое
+   предложение естественно, а не в шапку-обращение.
 
 СТИЛЬ: уверенный, деловой, взрослый, без заискивания, пафоса, самовосхваления, канцелярита и
 воды. ЗАПРЕЩЕНО: длинные тире (только короткое «-»); «прошу рассмотреть мою кандидатуру»;
@@ -112,6 +117,28 @@ Telegram: t.me/Sunpavel
   "recommendations": {"strengthen": [str], "interview_questions": [str], "prepare_facts": [str]}
 }
 """
+
+# Компактный вариант для free-режима: вся та же экспертиза/правила, но на ВЫХОДЕ — только
+# resume + cover_letter. Большой JSON (analysis/match_map/recommendations) бесплатные модели
+# регулярно обрывают → невалидный JSON; короткий ответ парсится надёжно.
+STRATEGIST_SYSTEM_LEAN = STRATEGIST_SYSTEM.split("ФОРМАТ ОТВЕТА")[0].rstrip() + """
+
+ФОРМАТ ОТВЕТА — верни СТРОГО валидный JSON-объект (без markdown, без комментариев, без иных полей):
+{
+  "resume": {
+    "full_name": "Скворцов Павел Валерьевич",
+    "target_title": str,
+    "contacts": {"phone": "+7 926 390-74-60", "email": "sunpavel@mail.ru",
+                 "telegram": "t.me/Sunpavel", "location": str},
+    "profile": str,
+    "competencies": [str],
+    "experience": [{"company": str, "title": str, "period": str, "context": str,
+                    "responsibilities": [str], "achievements": [str]}],
+    "education": [str], "tools": [str], "additional": [str]
+  },
+  "cover_letter": str
+}
+Только resume и cover_letter. Анализ вакансии делай в уме, в JSON его НЕ выводи."""
 
 REVIEWER_SYSTEM = """Ты — придирчивый HR-ревизор и нанимающий руководитель. Тебе дают вакансию,
 мастер-резюме кандидата и черновик отклика (адаптированное резюме + сопроводительное письмо),
@@ -203,14 +230,16 @@ def _single_pass() -> bool:
 
 
 def _generate(vacancy: dict, master_md: str, preferences: str,
-              fixes: list[str] | None = None) -> dict:
+              fixes: list[str] | None = None, lean: bool = False) -> dict:
     provider, model = _writer_cfg()
     user = _input_block(vacancy, master_md, preferences)
     if fixes:
         user += ("\n\n=== ЗАМЕЧАНИЯ РЕВИЗОРА (исправь и верни JSON заново) ===\n- "
                  + "\n- ".join(fixes))
-    return llm.complete_json(STRATEGIST_SYSTEM, user, provider=provider,
-                             model=model, max_tokens=12000)
+    # lean (free-режим): компактный JSON (resume+cover_letter) и меньше токенов — надёжнее.
+    system = STRATEGIST_SYSTEM_LEAN if lean else STRATEGIST_SYSTEM
+    return llm.complete_json(system, user, provider=provider,
+                             model=model, max_tokens=(8000 if lean else 12000))
 
 
 def _review(vacancy: dict, master_md: str, draft: dict) -> tuple[dict, str]:
@@ -236,13 +265,14 @@ def prepare_application(vacancy: dict, master_md: str | None = None,
     master_md = master_md or tailor_mod.load_master_resume()
     notes: list[str] = []
 
-    draft = _generate(vacancy, master_md, preferences)
+    lean = _single_pass()
+    draft = _generate(vacancy, master_md, preferences, lean=lean)
     wprov, wmodel = _writer_cfg()
     notes.append(f"написал {wprov}/{wmodel or 'default'}")
 
     review: dict = {}
-    if _single_pass():
-        notes.append("free-режим: без агента-критика (быстрее)")
+    if lean:
+        notes.append("free-режим: один проход, компактный JSON")
     else:
         review, who = _review(vacancy, master_md, draft)
         notes.append(f"проверил {who}")

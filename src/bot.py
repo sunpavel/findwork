@@ -253,8 +253,10 @@ def _handle_assist(chat_id, url: str) -> None:
     try:
         app = career_agent.prepare_application(vacancy)
     except Exception as e:  # noqa: BLE001 — деградация на простой шаблон
+        print(f"[bot] assist pipeline error: {e}", file=sys.stderr)  # детали в логи, не юзеру
         tr = tailor_mod.tailor(vacancy)
-        send(chat_id, f"⚠️ Полный пайплайн не сработал ({e}). Базовый вариант:\n\n✉️ {tr.cover_letter}")
+        send(chat_id, "⚠️ Не собрал полный комплект — вот сопроводительное (базовый вариант):\n\n"
+                      f"✉️ {tr.cover_letter}")
         return
 
     a = app.analysis or {}
