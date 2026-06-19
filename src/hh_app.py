@@ -302,6 +302,29 @@ def apply_to_vacancy(vacancy_id: str, resume_id: str, message: str) -> None:
         raise HHAppError(f"POST /negotiations → сеть: {e.reason}") from e
 
 
+def applied_vacancy_ids(max_pages: int = 50) -> set[str]:
+    """ID вакансий, на которые соискатель УЖЕ откликнулся (история откликов на HH).
+
+    GET /negotiations с пагинацией. Покрывает и ручные отклики на hh.ru, и отклики через
+    бота — HH фиксирует и те, и другие. Используется пайплайном, чтобы такие вакансии не
+    попадали в дайджест повторно. Возвращает сырые HH-id (строки).
+    """
+    ids: set[str] = set()
+    page = 0
+    while page < max_pages:
+        data = _request("GET", "/negotiations", params={"page": page, "per_page": 100})
+        items = data.get("items") or []
+        for it in items:
+            vac = it.get("vacancy") or {}
+            vid = vac.get("id")
+            if vid:
+                ids.add(str(vid))
+        if page + 1 >= int(data.get("pages") or 1) or not items:
+            break
+        page += 1
+    return ids
+
+
 def whoami() -> dict:
     """Профиль авторизованного соискателя (GET /me) — для проверки токена."""
     return _request("GET", "/me")

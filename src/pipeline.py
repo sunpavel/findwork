@@ -21,6 +21,7 @@ import argparse
 import datetime as dt
 import html
 import json
+import re
 from pathlib import Path
 
 from relevance import load_profile, score_vacancy
@@ -118,6 +119,32 @@ def collect(source_names: str, profile: dict) -> list[dict]:
     return all_v
 
 
+def _applied_hh_ids() -> set[str]:
+    """Сырые HH-id вакансий с уже сделанным откликом (история HH: ручные + через бота).
+
+    Пусто при отсутствии токена/ошибке — фильтр просто не применяется, дайджест не падает.
+    """
+    try:
+        import hh_app  # noqa: PLC0415
+        return hh_app.applied_vacancy_ids()
+    except Exception as e:  # noqa: BLE001 — нет авторизации/сети: деградируем без фильтра
+        print(f"  история откликов HH недоступна ({e}) — фильтр уже-откликнутых пропущен")
+        return set()
+
+
+def _hh_id_of(v: dict) -> str | None:
+    """HH-id вакансии, если он есть: из нормализованного id (hh-<id>) или из ссылки/описания
+    (канальные посты часто содержат hh.ru/vacancy/<id>)."""
+    vid = v.get("id", "") or ""
+    if vid.startswith("hh-"):
+        return vid[3:]
+    for field in (v.get("url", ""), v.get("description", "")):
+        m = re.search(r"/vacancy/(\d+)", field or "")
+        if m:
+            return m.group(1)
+    return None
+
+
 def run(source_name: str, send: bool, dry_run: bool, limit: int) -> int:
     import os  # noqa: PLC0415
     profile = load_profile()
@@ -125,6 +152,20 @@ def run(source_name: str, send: bool, dry_run: bool, limit: int) -> int:
     vacancies = collect(source_name, profile)
     seen = _load_seen()
     new_vacs = [v for v in vacancies if v["id"] not in seen]
+
+    # Исключаем вакансии, на которые уже откликнулись на hh.ru (ручные + через бота) —
+    # источник правды history /negotiations. Делаем ДО судьи (экономим токены) и помечаем
+    # их виденными, чтобы не возвращались. Отключается EXCLUDE_APPLIED=0.
+    applied_seen_ids: list[str] = []
+    if os.environ.get("EXCLUDE_APPLIED", "1").strip().lower() not in ("0", "false", "no"):
+        applied = _applied_hh_ids()
+        if applied:
+            applied_seen_ids = [v["id"] for v in new_vacs if _hh_id_of(v) in applied]
+            if applied_seen_ids:
+                drop = set(applied_seen_ids)
+                new_vacs = [v for v in new_vacs if v["id"] not in drop]
+                print(f"  исключено уже-откликнутых на HH: {len(applied_seen_ids)} "
+                      f"(в истории откликов {len(applied)})")
 
     # Умная релевантность (LLM-судья по мастер-резюме) — если доступен LLM и не выключено
     # RELEVANCE_LLM=0. Иначе откатываемся на keyword-скоринг. Помечаем виденными ВСЕ
@@ -157,7 +198,7 @@ def run(source_name: str, send: bool, dry_run: bool, limit: int) -> int:
     if not scored:
         print("Новых релевантных вакансий нет — дайджест не отправляется.")
         if not dry_run:  # всё равно помечаем рассмотренные, чтобы не гонять их повторно
-            seen.update(to_mark); _save_seen(seen)
+            seen.update(to_mark); seen.update(applied_seen_ids); _save_seen(seen)
         return 0
 
     print("\n" + digest + "\n")
@@ -168,6 +209,7 @@ def run(source_name: str, send: bool, dry_run: bool, limit: int) -> int:
 
     if not dry_run:
         seen.update(to_mark)
+        seen.update(applied_seen_ids)
         _save_seen(seen)
         print(f"Помечено как виденные: +{len(to_mark)} (всего {len(seen)})")
     else:
