@@ -172,6 +172,72 @@ def _openai(system: str, user: str, *, model: str, max_tokens: int, json_mode: b
     return d["choices"][0]["message"]["content"] or ""
 
 
+def _request_text(url: str, headers: dict, payload: dict, timeout: int = 240, retries: int = 3) -> str:
+    """POST, возвращающий СЫРОЙ текст ответа (для webhook n8n — он может отдать и не-JSON)."""
+    proxy = os.environ.get("LLM_PROXY")
+    opener = (urllib.request.build_opener(
+        urllib.request.ProxyHandler({"http": proxy, "https": proxy})) if proxy else None)
+    open_fn = opener.open if opener else urllib.request.urlopen
+    data = json.dumps(payload).encode("utf-8")
+    last = ""
+    for attempt in range(retries + 1):
+        req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+        try:
+            with open_fn(req, timeout=timeout) as resp:
+                return resp.read().decode("utf-8", "replace")
+        except urllib.error.HTTPError as e:
+            text = e.read().decode("utf-8", "replace")
+            if e.code in (429, 500, 502, 503, 504) and attempt < retries:
+                last = f"HTTP {e.code} {text[:120]}"; time.sleep(min(2 ** attempt, 20)); continue
+            raise LLMError(f"HTTP {e.code}: {text[:400]}") from e
+        except urllib.error.URLError as e:
+            if attempt < retries:
+                last = str(e.reason); time.sleep(min(2 ** attempt, 20)); continue
+            raise LLMError(f"сеть: {e.reason}") from e
+    raise LLMError(f"n8n не ответил за {retries} попыток: {last[:200]}")
+
+
+def _n8n_text(d) -> str:
+    """Достаёт текст из ответа webhook: поддерживаем разумные формы (n8n гибкий)."""
+    if isinstance(d, list) and d:
+        d = d[0]
+    if isinstance(d, dict):
+        ch = d.get("choices")
+        if ch:  # OpenAI-форма, если воркфлоу вернул сырой ответ модели
+            msg = (ch[0].get("message") or {})
+            return msg.get("content") or ch[0].get("text") or ""
+        msg = d.get("message")
+        if isinstance(msg, dict):
+            return msg.get("content") or ""
+        for k in ("content", "text", "output", "result", "answer"):
+            v = d.get(k)
+            if isinstance(v, str) and v.strip():
+                return v
+    raise LLMError(f"n8n: не нашёл текст в ответе: {str(d)[:200]}")
+
+
+def _n8n(system: str, user: str, *, model: str, max_tokens: int, json_mode: bool) -> str:
+    """Премиум-путь для РФ: бот → webhook n8n (зарубежный сервер) → ChatGPT → ответ.
+
+    Ключ OpenAI живёт в n8n (кредл), а не в боте; гео-блок api.openai.com не мешает,
+    т.к. запрос уходит на n8n. Контракт webhook см. tools/build_n8n_llm_webhook.py."""
+    url = os.environ.get("N8N_LLM_URL")
+    if not url:
+        raise LLMError("нет N8N_LLM_URL")
+    headers = {"Content-Type": "application/json"}
+    tok = os.environ.get("N8N_LLM_TOKEN")
+    if tok:
+        headers["X-Findwork-Token"] = tok  # общий секрет, чтобы webhook не дёргали чужие
+    payload = {"system": system, "user": user, "model": model or "",
+               "max_tokens": max_tokens, "json_mode": bool(json_mode)}
+    raw = _request_text(url, headers, payload).strip()
+    try:
+        d = json.loads(raw)
+    except json.JSONDecodeError:
+        return raw  # webhook вернул чистый текст
+    return _n8n_text(d)
+
+
 def _anthropic(system: str, user: str, *, model: str, max_tokens: int, json_mode: bool) -> str:
     key = os.environ.get("ANTHROPIC_API_KEY")
     if not key:
@@ -189,13 +255,16 @@ def _anthropic(system: str, user: str, *, model: str, max_tokens: int, json_mode
 
 def complete(system: str, user: str, *, provider: str, model: str | None = None,
              max_tokens: int = 8000, json_mode: bool = False) -> str:
-    """Единый вызов модели. provider: openai | anthropic."""
+    """Единый вызов модели. provider: openai | anthropic | n8n."""
     if provider == "openai":
         return _openai(system, user, model=model or os.environ.get("OPENAI_MODEL", OPENAI_DEFAULT_MODEL),
                        max_tokens=max_tokens, json_mode=json_mode)
     if provider == "anthropic":
         return _anthropic(system, user, model=model or os.environ.get("ANTHROPIC_MODEL", ANTHROPIC_DEFAULT_MODEL),
                           max_tokens=max_tokens, json_mode=json_mode)
+    if provider == "n8n":
+        return _n8n(system, user, model=model or os.environ.get("N8N_LLM_MODEL", ""),
+                    max_tokens=max_tokens, json_mode=json_mode)
     raise LLMError(f"неизвестный провайдер: {provider}")
 
 
@@ -233,5 +302,10 @@ def complete_json(system: str, user: str, *, provider: str, model: str | None = 
 
 
 def has_provider(provider: str) -> bool:
-    return bool(os.environ.get("OPENAI_API_KEY") if provider == "openai"
-                else os.environ.get("ANTHROPIC_API_KEY"))
+    if provider == "openai":
+        return bool(os.environ.get("OPENAI_API_KEY"))
+    if provider == "anthropic":
+        return bool(os.environ.get("ANTHROPIC_API_KEY"))
+    if provider == "n8n":
+        return bool(os.environ.get("N8N_LLM_URL"))
+    return False

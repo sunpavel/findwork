@@ -198,13 +198,27 @@ def _input_block(vacancy: dict, master_md: str, preferences: str = "") -> str:
     return "\n".join(parts)
 
 
+def _default_provider() -> str:
+    """Какой провайдер брать по умолчанию: n8n (премиум-путь для РФ) важнее всего —
+    если задан N8N_LLM_URL, бот ходит к ChatGPT через зарубежный n8n с платным ключом."""
+    if os.environ.get("N8N_LLM_URL"):
+        return "n8n"
+    if os.environ.get("OPENAI_API_KEY"):
+        return "openai"
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        return "anthropic"
+    return "openai"
+
+
 def _writer_cfg() -> tuple[str, str | None]:
-    return (os.environ.get("WRITER_PROVIDER", "openai"),
+    return (os.environ.get("WRITER_PROVIDER") or _default_provider(),
             os.environ.get("WRITER_MODEL") or None)
 
 
 def _reviewer_cfg() -> tuple[str, str | None]:
-    return (os.environ.get("REVIEWER_PROVIDER", "anthropic"),
+    # Критик по умолчанию: Claude, но если есть только n8n — проверяем через него же.
+    default = "n8n" if os.environ.get("N8N_LLM_URL") and not os.environ.get("ANTHROPIC_API_KEY") else "anthropic"
+    return (os.environ.get("REVIEWER_PROVIDER") or default,
             os.environ.get("REVIEWER_MODEL") or None)
 
 

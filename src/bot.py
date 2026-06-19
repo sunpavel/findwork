@@ -337,25 +337,20 @@ def _health_text() -> str:
     # Telegram — если это сообщение дошло, значит работает.
     lines.append("• Telegram: ✅ бот отвечает")
 
-    # LLM для писем — активный провайдер.
-    prov = tailor_mod._provider()
-    if prov == "openai":
-        model = os.environ.get("OPENAI_MODEL", tailor_mod.OPENAI_DEFAULT_MODEL)
+    # LLM для писем — реальный провайдер двухагентного пайплайна (career_agent).
+    prov, wmodel = career_agent._writer_cfg()
+    if prov == "n8n" and os.environ.get("N8N_LLM_URL"):
+        model = wmodel or os.environ.get("N8N_LLM_MODEL") or "модель задаётся в n8n"
+        lines.append(f"• Письма (LLM): ✅ ChatGPT через n8n ({model})")
+    elif prov == "openai" and os.environ.get("OPENAI_API_KEY"):
+        model = wmodel or os.environ.get("OPENAI_MODEL", tailor_mod.OPENAI_DEFAULT_MODEL)
         lines.append(f"• Письма (LLM): ✅ OpenAI {model}")
-    elif prov == "anthropic":
-        try:
-            import anthropic  # noqa: F401, PLC0415
-            sdk = True
-        except Exception:  # noqa: BLE001
-            sdk = False
-        model = os.environ.get("ANTHROPIC_MODEL", tailor_mod.DEFAULT_MODEL)
-        if sdk:
-            lines.append(f"• Письма (LLM): ✅ Claude {model}")
-        else:
-            lines.append("• Письма (LLM): ⚠️ ключ Claude есть, нет пакета `anthropic` → "
-                         "шаблон (`pip install -r requirements.txt`)")
+    elif prov == "anthropic" and os.environ.get("ANTHROPIC_API_KEY"):
+        model = wmodel or os.environ.get("ANTHROPIC_MODEL", tailor_mod.DEFAULT_MODEL)
+        lines.append(f"• Письма (LLM): ✅ Claude {model}")
     else:
-        lines.append("• Письма (LLM): ⚠️ нет ключа OPENAI/ANTHROPIC → письма по шаблону")
+        lines.append("• Письма (LLM): ⚠️ нет провайдера (N8N_LLM_URL / OPENAI_API_KEY / "
+                     "ANTHROPIC_API_KEY) → письма по шаблону")
 
     # HH — токен приложения (серый путь, нужен для откликов).
     try:
