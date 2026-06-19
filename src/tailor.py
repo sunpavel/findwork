@@ -237,7 +237,10 @@ def _tailor_openai(vacancy: dict, master_md: str, score_hint: str | None) -> Tai
     # default ≈ 40+ сек. Для интерактивного бота по умолчанию minimal. Параметр шлём
     # ТОЛЬКО reasoning-моделям (gpt-4.1 его не принимает).
     effort = os.environ.get("OPENAI_REASONING_EFFORT", "minimal")
-    if effort and model.startswith(("gpt-5", "o1", "o3", "o4")):
+    if compat:
+        # OpenRouter: короткие раздумья reasoning-моделей (gpt-oss) — быстрее и без пустого ответа.
+        body["reasoning"] = {"effort": {"minimal": "low"}.get(effort, effort) or "low"}
+    elif effort and model.startswith(("gpt-5", "o1", "o3", "o4")):
         body["reasoning_effort"] = effort
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
     if compat:

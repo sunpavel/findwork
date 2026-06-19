@@ -91,7 +91,12 @@ def _openai(system: str, user: str, *, model: str, max_tokens: int, json_mode: b
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
     effort = os.environ.get("OPENAI_REASONING_EFFORT", "minimal")
-    if effort and model.startswith(("gpt-5", "o1", "o3", "o4")):
+    if compat:
+        # OpenRouter: ограничиваем глубину раздумий reasoning-моделей (gpt-oss и пр.) —
+        # иначе они думают десятки секунд и нередко оставляют пустой content. Модели без
+        # reasoning этот параметр игнорируют.
+        payload["reasoning"] = {"effort": {"minimal": "low"}.get(effort, effort) or "low"}
+    elif effort and model.startswith(("gpt-5", "o1", "o3", "o4")):
         payload["reasoning_effort"] = effort
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
     if compat:

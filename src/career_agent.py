@@ -184,6 +184,24 @@ def _fallback_reviewer_cfg() -> tuple[str, str | None]:
             os.environ.get("REVIEWER_FALLBACK_MODEL", "gpt-4.1"))
 
 
+def _single_pass() -> bool:
+    """Один проход (без критика и правки) — для бесплатных/медленных моделей.
+
+    Двухагентный цикл = 2–3 тяжёлых вызова подряд; на free-моделях (gpt-oss и пр.)
+    это минуты ожидания, и бот выглядит зависшим. На совместимом шлюзе (модель вида
+    "vendor/model", напр. OpenRouter) по умолчанию делаем один проход. Принудительно:
+    CAREER_SINGLE_PASS=1  (или =0, чтобы всегда включать критика).
+    """
+    flag = os.environ.get("CAREER_SINGLE_PASS", "").strip().lower()
+    if flag in ("1", "true", "yes"):
+        return True
+    if flag in ("0", "false", "no"):
+        return False
+    _, wmodel = _writer_cfg()
+    model = wmodel or os.environ.get("OPENAI_MODEL", "")
+    return "/" in model
+
+
 def _generate(vacancy: dict, master_md: str, preferences: str,
               fixes: list[str] | None = None) -> dict:
     provider, model = _writer_cfg()
@@ -229,17 +247,20 @@ def prepare_application(vacancy: dict, master_md: str | None = None,
     wprov, wmodel = _writer_cfg()
     notes.append(f"написал {wprov}/{wmodel or 'default'}")
 
-    review, who = _review(vacancy, master_md, draft)
-    notes.append(f"проверил {who}")
-
-    if review.get("verdict") == "revise" and review.get("fixes"):
-        # Правка — улучшение, а не обязательный шаг: если free-модель вернёт пустой/
-        # битый ответ, оставляем первый удачный черновик, а не валим весь пайплайн.
-        try:
-            draft = _generate(vacancy, master_md, preferences, fixes=review["fixes"])
-            notes.append(f"внесена 1 правка по {len(review['fixes'])} замечаниям")
-        except llm.LLMError as e:
-            notes.append(f"правка пропущена ({e}) — оставлен первый вариант")
+    review: dict = {}
+    if _single_pass():
+        notes.append("free-режим: без агента-критика (быстрее)")
+    else:
+        review, who = _review(vacancy, master_md, draft)
+        notes.append(f"проверил {who}")
+        if review.get("verdict") == "revise" and review.get("fixes"):
+            # Правка — улучшение, а не обязательный шаг: если free-модель вернёт пустой/
+            # битый ответ, оставляем первый удачный черновик, а не валим весь пайплайн.
+            try:
+                draft = _generate(vacancy, master_md, preferences, fixes=review["fixes"])
+                notes.append(f"внесена 1 правка по {len(review['fixes'])} замечаниям")
+            except llm.LLMError as e:
+                notes.append(f"правка пропущена ({e}) — оставлен первый вариант")
 
     resume = draft.get("resume", {})
     resume.setdefault("full_name", CONTACTS["full_name"])
