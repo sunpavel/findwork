@@ -240,6 +240,37 @@ def _handle_confirm(chat_id, token: str) -> None:
 
 # --- Ассистент (facancy.ru и пр.): материалы без отправки ---------------------
 
+def _keyword_match(vacancy: dict, resume: dict) -> str:
+    """ATS-сигнал (механика Jobscan): покрывает ли резюме ключевые навыки вакансии.
+
+    Берём key_skills вакансии и ищем их (по значимым словам) в компетенциях/профиле/
+    опыте/инструментах адаптированного резюме. Показываем процент и что не отражено —
+    чтобы было видно, насколько резюме «подсвечено» под вакансию для скрининга."""
+    skills = [s.get("name", "").strip() for s in (vacancy.get("key_skills") or []) if s.get("name")]
+    if not skills:
+        return ""
+    hay = " ".join([
+        " ".join(resume.get("competencies", []) or []),
+        resume.get("profile", "") or "",
+        " ".join(t for e in (resume.get("experience") or [])
+                 for t in (e.get("responsibilities", []) + e.get("achievements", []))),
+        " ".join(resume.get("tools", []) or []),
+        " ".join(resume.get("skill_set", []) or []),  # запасной путь tailor
+    ]).lower()
+
+    def covered(skill: str) -> bool:
+        words = [w for w in re.findall(r"\w+", skill.lower()) if len(w) > 3]
+        return any(w in hay for w in words) if words else skill.lower() in hay
+
+    miss = [s for s in skills if not covered(s)]
+    cov = len(skills) - len(miss)
+    pct = round(100 * cov / len(skills))
+    line = f"🎯 Соответствие навыкам вакансии: {cov}/{len(skills)} ({pct}%)"
+    if miss:
+        line += "\n_Не отражены:_ " + ", ".join(miss[:8])
+    return line
+
+
 def _handle_assist(chat_id, url: str) -> None:
     site = urllib.parse.urlparse(url).netloc or "сайт"
     send(chat_id, f"⏳ Беру вакансию с {site}…")
@@ -261,16 +292,19 @@ def _handle_assist(chat_id, url: str) -> None:
         return
 
     a = app.analysis or {}
-    accents = ", ".join((a.get("accents") or [])[:5])
     head = (f"🧩 *Ассистент ({site})* — отклик делаешь сам на сайте.\n\n"
             f"🎯 *{vacancy.get('name', 'Вакансия')}*\n")
     if a.get("real_role"):
         head += f"_Роль:_ {a['real_role']}\n"
+    accents = ", ".join((a.get("accents") or [])[:5])
     if accents:
         head += f"_Акценты под вакансию:_ {accents}\n"
-    head += (f"_Проверка ({'/'.join(n for n in app.notes if 'провер' in n) or '—'}):_ "
-             f"{app.review.get('verdict', '—')} {app.review.get('score', '')}/100")
-    send(chat_id, head)
+    km = _keyword_match(vacancy, app.resume or {})
+    if km:
+        head += km + "\n"
+    if app.review.get("verdict"):  # критик есть только в премиум-режиме (двухагентном)
+        head += f"_Проверка:_ {app.review.get('verdict')} {app.review.get('score', '')}/100"
+    send(chat_id, head.rstrip())
     send(chat_id, "✉️ *Сопроводительное:*\n" + (app.cover_letter or "—"))
 
     # Резюме файлами (PDF + DOCX). Если пакетов рендера нет — отдадим текстом.
