@@ -209,15 +209,8 @@ def _generate(vacancy: dict, master_md: str, preferences: str,
     if fixes:
         user += ("\n\n=== ЗАМЕЧАНИЯ РЕВИЗОРА (исправь и верни JSON заново) ===\n- "
                  + "\n- ".join(fixes))
-    # Бесплатные модели иногда отдают пустой/битый JSON — даём одну повторную попытку.
-    last: llm.LLMError | None = None
-    for _ in range(2):
-        try:
-            return llm.complete_json(STRATEGIST_SYSTEM, user, provider=provider,
-                                     model=model, max_tokens=12000)
-        except llm.LLMError as e:
-            last = e
-    raise last if last else llm.LLMError("генерация не удалась")
+    return llm.complete_json(STRATEGIST_SYSTEM, user, provider=provider,
+                             model=model, max_tokens=12000)
 
 
 def _review(vacancy: dict, master_md: str, draft: dict) -> tuple[dict, str]:

@@ -75,6 +75,70 @@ def _post(url: str, headers: dict, payload: dict, timeout: int = 240, retries: i
     raise LLMError(f"429 не отпустил за {retries} попыток: {last[:200]}")
 
 
+def _post_stream(url: str, headers: dict, payload: dict, timeout: int = 240, retries: int = 2) -> str:
+    """Стримовый запрос к OpenAI-совместимому /chat/completions (для OpenRouter).
+
+    Зачем стрим: у медленных free-моделей нестримовый запрос упирается во внутренний
+    таймаут шлюза и возвращает пустое тело (одни keep-alive переводы строк) — ровно
+    то, что роняло пайплайн. Стрим отдаёт токены по мере генерации; парсим устойчиво:
+    пропускаем SSE-комментарии (": ...") и собираем delta.content. 429/error и пустой
+    стрим — ретраим.
+    """
+    h = dict(headers)
+    h["Accept"] = "text/event-stream"
+    data = json.dumps({**payload, "stream": True}).encode("utf-8")
+    proxy = os.environ.get("LLM_PROXY")
+    opener = (urllib.request.build_opener(
+        urllib.request.ProxyHandler({"http": proxy, "https": proxy})) if proxy else None)
+    open_fn = opener.open if opener else urllib.request.urlopen
+    last = ""
+    for attempt in range(retries + 1):
+        req = urllib.request.Request(url, data=data, headers=h, method="POST")
+        try:
+            resp = open_fn(req, timeout=timeout)
+        except urllib.error.HTTPError as e:
+            text = e.read().decode("utf-8", "replace")
+            if e.code == 429 and attempt < retries:
+                last = text[:120]; time.sleep(min(2 ** attempt, 20)); continue
+            raise LLMError(f"HTTP {e.code}: {text[:400]}") from e
+        except urllib.error.URLError as e:
+            raise LLMError(f"сеть: {e.reason}") from e
+        parts: list[str] = []
+        err = None
+        try:
+            for raw in resp:
+                line = raw.decode("utf-8", "replace").strip()
+                if not line or line.startswith(":"):
+                    continue  # keep-alive комментарий шлюза
+                if line.startswith("data:"):
+                    line = line[5:].strip()
+                if line == "[DONE]":
+                    break
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if obj.get("error"):
+                    err = obj["error"]; break
+                for ch in obj.get("choices", []):
+                    parts.append((ch.get("delta") or {}).get("content") or "")
+        finally:
+            resp.close()
+        if err:
+            code, msg = err.get("code"), (err.get("message") or "")
+            if code == 429 and attempt < retries:
+                wait = (err.get("metadata") or {}).get("retry_after_seconds") or 2 ** attempt
+                last = msg; time.sleep(min(float(wait), 25)); continue
+            raise LLMError(f"LLM error {code}: {msg[:300]}")
+        text = "".join(parts).strip()
+        if text:
+            return text
+        last = "пустой стрим"
+        if attempt < retries:
+            time.sleep(min(2 ** attempt, 10))
+    raise LLMError(f"пустой ответ модели после {retries + 1} попыток ({last[:120]})")
+
+
 def _openai(system: str, user: str, *, model: str, max_tokens: int, json_mode: bool) -> str:
     key = os.environ.get("OPENAI_API_KEY")
     if not key:
@@ -102,6 +166,8 @@ def _openai(system: str, user: str, *, model: str, max_tokens: int, json_mode: b
     if compat:
         headers["HTTP-Referer"] = "https://github.com/sunpavel/findwork"
         headers["X-Title"] = "findwork"
+        # Стрим — обязателен для медленных free-моделей (иначе пустое тело по таймауту).
+        return _post_stream(_openai_url(), headers, payload)
     d = _post(_openai_url(), headers, payload)
     return d["choices"][0]["message"]["content"] or ""
 

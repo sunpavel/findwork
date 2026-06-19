@@ -25,6 +25,8 @@ import re
 import time
 import urllib.error
 import urllib.request
+
+import llm
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -249,7 +251,8 @@ def _tailor_openai(vacancy: dict, master_md: str, score_hint: str | None) -> Tai
         headers["HTTP-Referer"] = "https://github.com/sunpavel/findwork"
         headers["X-Title"] = "findwork"
     url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/") + "/chat/completions"
-    content = _openai_chat(url, headers, body)
+    # На free-шлюзе — стрим (иначе медленная модель отдаёт пустое тело по таймауту).
+    content = llm._post_stream(url, headers, body) if compat else _openai_chat(url, headers, body)
     return _result_from_json(_loads_lenient(content), f"{model}")
 
 
