@@ -73,6 +73,29 @@ def build_digest(scored: list[tuple[dict, object]], limit: int) -> str:
     return "\n".join(lines)
 
 
+def build_digest_smart(scored: list[tuple[dict, object]], limit: int) -> str:
+    """Дайджест по LLM-релевантности (relevance_llm.FitResult): показываем не «совпавшие
+    слова», а почему вакансия в уровень и по опыту + честный подвох и уровень."""
+    e = html.escape
+    today = dt.date.today().strftime("%d.%m.%Y")
+    lines = [f"<b>🗞 Вакансии на {today}</b> — {min(len(scored), limit)} под твой профиль\n"]
+    for vac, fr in scored[:limit]:
+        title = vac.get("title") or vac.get("name", "")
+        block = (f"<b>{fr.score}/100</b> · {e(title)}\n"
+                 f"🏢 {e(vac.get('company') or '—')} · 📍 {e(vac.get('area') or '—')} · "
+                 f"💰 {e(_fmt_salary(vac.get('salary')))}\n")
+        if fr.why:
+            block += f"💡 {e(fr.why[:240])}\n"
+        if fr.gaps:
+            block += f"⚠️ {e('; '.join(fr.gaps[:2])[:200])}\n"
+        if fr.level_match and fr.level_match != "в уровень":
+            block += f"📊 уровень: {e(fr.level_match)}\n"
+        block += f"🔗 {e(vac.get('url', ''))}\n"
+        lines.append(block)
+    lines.append("<i>Ответь ссылкой на вакансию — подготовлю резюме и письмо.</i>")
+    return "\n".join(lines)
+
+
 def collect(source_names: str, profile: dict) -> list[dict]:
     """Собирает вакансии из одного или нескольких источников (через запятую).
 
@@ -96,28 +119,47 @@ def collect(source_names: str, profile: dict) -> list[dict]:
 
 
 def run(source_name: str, send: bool, dry_run: bool, limit: int) -> int:
+    import os  # noqa: PLC0415
     profile = load_profile()
-    digest_threshold = profile["thresholds"]["digest"]
 
     vacancies = collect(source_name, profile)
     seen = _load_seen()
+    new_vacs = [v for v in vacancies if v["id"] not in seen]
 
-    scored = []
-    for vac in vacancies:
-        if vac["id"] in seen:
-            continue
-        res = score_vacancy(vac["title"], vac.get("description", ""), vac.get("salary"), profile)
-        if res.score >= digest_threshold:
-            scored.append((vac, res))
+    # Умная релевантность (LLM-судья по мастер-резюме) — если доступен LLM и не выключено
+    # RELEVANCE_LLM=0. Иначе откатываемся на keyword-скоринг. Помечаем виденными ВСЕ
+    # рассмотренные вакансии (в smart-режиме — чтобы не пере-судить их и не жечь токены).
+    smart = None
+    if os.environ.get("RELEVANCE_LLM", "1").strip().lower() not in ("0", "false", "no"):
+        try:
+            import llm  # noqa: PLC0415
+            import relevance_llm  # noqa: PLC0415
+            if llm.has_provider(llm.default_provider()):
+                smart = relevance_llm.rank_smart(new_vacs, profile)
+        except Exception as e:  # noqa: BLE001 — нет LLM/ключа: тихо на keyword
+            print(f"  LLM-релевантность недоступна ({e}) — keyword-скоринг")
 
-    scored.sort(key=lambda pair: pair[1].score, reverse=True)
+    if smart is not None:
+        scored = smart
+        digest = build_digest_smart(scored, limit)
+        to_mark = [v["id"] for v in new_vacs]            # все рассмотренные — не пере-судим
+        mode = "LLM-судья по мастер-резюме"
+    else:
+        th = profile["thresholds"]["digest"]
+        kw = [(v, r) for v in new_vacs
+              if (r := score_vacancy(v["title"], v.get("description", ""), v.get("salary"), profile)).score >= th]
+        kw.sort(key=lambda pair: pair[1].score, reverse=True)
+        scored, digest = kw, build_digest(kw, limit)
+        to_mark = [v["id"] for v, _ in kw]
+        mode = "keyword-скоринг"
 
-    print(f"Источники: {source_name} · всего {len(vacancies)} · новых релевантных: {len(scored)}")
+    print(f"Источники: {source_name} · всего {len(vacancies)} · новых релевантных: {len(scored)} · {mode}")
     if not scored:
         print("Новых релевантных вакансий нет — дайджест не отправляется.")
+        if not dry_run:  # всё равно помечаем рассмотренные, чтобы не гонять их повторно
+            seen.update(to_mark); _save_seen(seen)
         return 0
 
-    digest = build_digest(scored, limit)
     print("\n" + digest + "\n")
 
     if send and not dry_run:
@@ -125,9 +167,9 @@ def run(source_name: str, send: bool, dry_run: bool, limit: int) -> int:
         print("Telegram: отправлено" if ok else "Telegram: не отправлено")
 
     if not dry_run:
-        seen.update(vac["id"] for vac, _ in scored)
+        seen.update(to_mark)
         _save_seen(seen)
-        print(f"Помечено как виденные: +{len(scored)} (всего {len(seen)})")
+        print(f"Помечено как виденные: +{len(to_mark)} (всего {len(seen)})")
     else:
         print("[dry-run] состояние не изменено, ничего не отправлено")
     return 0

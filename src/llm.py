@@ -309,3 +309,14 @@ def has_provider(provider: str) -> bool:
     if provider == "n8n":
         return bool(os.environ.get("N8N_LLM_URL"))
     return False
+
+
+def default_provider() -> str:
+    """Провайдер по умолчанию: n8n (премиум-путь для РФ) важнее всего, затем прямые ключи."""
+    if os.environ.get("N8N_LLM_URL"):
+        return "n8n"
+    if os.environ.get("OPENAI_API_KEY"):
+        return "openai"
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        return "anthropic"
+    return "openai"
