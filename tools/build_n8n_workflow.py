@@ -4,7 +4,7 @@
 Создаёт/обновляет в n8n воркфлоу HH-дайджеста (оригинал не трогаем).
 
 Поток:
-  Schedule(09:00)/Manual → today → HH token (минт, не падает при лимите)
+  Schedule(каждые 2ч 9-21)/Manual → today → HH token (минт, не падает при лимите)
     → HH token (cache) [staticData + сид-фолбэк]
     → HH «Коммерческий директор» / «Директор по маркетингу» (Bearer; salary>=450k ИЛИ без вилки)
     → Merge → score+dedup (LIST, скоринг по сниппету, дедуп в staticData)
@@ -125,6 +125,7 @@ BUILD_GLUE = r'''
 const fulls=$('get full vacancy').all();
 let llms=[]; try{ llms=$('LLM почему подходит').all(); }catch(e){}
 function parseJudge(txt){ if(!txt) return null; const s=String(txt); const a=s.indexOf('{'), b=s.lastIndexOf('}'); if(a<0||b<0||b<a) return null; try{ return JSON.parse(s.slice(a,b+1)); }catch(e){ return null; } }
+function ago(iso){ if(!iso) return ''; const d=new Date(iso); if(isNaN(d.getTime())) return ''; const h=Math.floor((Date.now()-d.getTime())/3600000); if(h<1) return 'только что'; if(h<24) return h+'ч назад'; return Math.floor(h/24)+'д назад'; }
 const MIN=PROFILE.thresholds.digest;
 const rows=[];
 for(let i=0;i<fulls.length;i++){
@@ -142,7 +143,7 @@ for(let i=0;i<fulls.length;i++){
   if(score<MIN) continue;
   rows.push({score, why, gaps, level, best_role:kw.best_role, matched:kw.matched, name:v.name,
     company:(v.employer||{}).name||'', area:(v.area||{}).name||'', salary:v.salary,
-    url:v.alternate_url||('https://hh.ru/vacancy/'+v.id)});
+    published:v.published_at||'', url:v.alternate_url||('https://hh.ru/vacancy/'+v.id)});
 }
 rows.sort((a,b)=>b.score-a.score);
 if(rows.length===0) return [];
@@ -154,7 +155,9 @@ const blocks=rows.map(v=>{
   if(v.why) b+='💡 '+v.why.slice(0,240)+'\n';
   else b+='🎯 '+v.best_role+' · ✓ '+(v.matched||[]).join(', ')+'\n';
   if(v.gaps&&v.gaps.length) b+='⚠️ '+v.gaps.join('; ').slice(0,200)+'\n';
-  if(v.level&&v.level!=='в уровень') b+='📊 уровень: '+v.level+'\n';
+  const fr=ago(v.published); const lv=(v.level&&v.level!=='в уровень')?('📊 '+v.level):'';
+  const meta=[fr?('🕐 '+fr):'', lv].filter(Boolean).join(' · ');
+  if(meta) b+=meta+'\n';
   b+='🔗 '+(v.url||'')+'\n';
   return b;
 });
@@ -273,8 +276,8 @@ def node(name, ntype, ver, params, pos, creds=None, extra=None):
 def build():
     cont = {"onError": "continueRegularOutput"}
     n_manual = node("Manual Trigger", "n8n-nodes-base.manualTrigger", 1, {}, [-1000, 80])
-    n_sched = node("Schedule 09:00", "n8n-nodes-base.scheduleTrigger", 1.2,
-                   {"rule": {"interval": [{"field": "cronExpression", "expression": "0 9 * * *"}]}},
+    n_sched = node("Scan каждые 2ч (9-21)", "n8n-nodes-base.scheduleTrigger", 1.2,
+                   {"rule": {"interval": [{"field": "cronExpression", "expression": "0 9-21/2 * * *"}]}},
                    [-1000, 260])
     n_today = node("today", "n8n-nodes-base.code", 2,
                    {"jsCode": "const d=new Date(Date.now()-3*86400000);\n"
