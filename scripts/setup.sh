@@ -199,7 +199,7 @@ except Exception as e:
 fi
 
 # --- 4. Бот как сервис systemd ----------------------------------------------
-say "4/4 Бот как сервис systemd (24/7, авто-рестарт)"
+say "4/5 Бот как сервис systemd (24/7, авто-рестарт)"
 cat > /etc/systemd/system/findwork-bot.service <<UNIT
 [Unit]
 Description=findwork Telegram bot
@@ -221,15 +221,48 @@ systemctl daemon-reload
 systemctl enable --now findwork-bot >/dev/null 2>&1 || systemctl restart findwork-bot
 sleep 2
 
+# --- 5. Авто-деплой: сам подтягивает изменения из git и перезапускает бота ----
+say "5/5 Авто-деплой (раз в минуту: git pull + рестарт)"
+chmod +x "${REPO}/scripts/autodeploy.sh"
+cat > /etc/systemd/system/findwork-deploy.service <<UNIT
+[Unit]
+Description=findwork auto-deploy (git pull + restart)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=${REPO}/scripts/autodeploy.sh
+UNIT
+
+cat > /etc/systemd/system/findwork-deploy.timer <<UNIT
+[Unit]
+Description=findwork auto-deploy every minute
+
+[Timer]
+OnBootSec=30
+OnUnitActiveSec=60
+AccuracySec=10
+
+[Install]
+WantedBy=timers.target
+UNIT
+
+systemctl daemon-reload
+systemctl enable --now findwork-deploy.timer >/dev/null 2>&1 || systemctl restart findwork-deploy.timer
+echo "ok: авто-деплой включён (изменения из git применяются сами ≤1 мин)"
+
 say "Готово!"
 cat <<DONE
-Статус сервиса:
+Статус сервисов:
   systemctl status findwork-bot --no-pager
+  systemctl list-timers findwork-deploy.timer --no-pager
 Логи бота вживую:
   journalctl -u findwork-bot -f
-Обновить проект потом:
-  cd ${REPO} && git pull && systemctl restart findwork-bot
+Логи авто-деплоя:
+  journalctl -t findwork-deploy -n 20 --no-pager
 
-В Telegram отправь боту /health (галка «Письма (LLM)» зелёная),
-затем /dry <ссылка на вакансию> — это реальная генерация резюме и письма.
+Дальше обновлять руками НЕ нужно — пуш в ветку применяется автоматически.
+В Telegram: /health (галка «Письма (LLM)» зелёная), затем пришли ссылку
+на вакансию (HH или facancy) и/или фото — придёт резюме.
 DONE
