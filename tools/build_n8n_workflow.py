@@ -8,8 +8,8 @@
     → HH token (cache) [staticData + сид-фолбэк]
     → HH «Коммерческий директор» / «Директор по маркетингу» (Bearer; salary>=450k ИЛИ без вилки)
     → Merge → score+dedup (LIST, скоринг по сниппету, дедуп в staticData)
-    → get full vacancy (/vacancies/{id}) → LLM «почему подходит» (OpenAI)
-    → build digest (пересчёт скоринга по полному описанию + причина) → Telegram
+    → get full vacancy (/vacancies/{id}) → LLM-судья по мастер-резюме (OpenAI gpt-4o, JSON fit)
+    → build digest (ранжирование по fit судьи; keyword — фолбэк + пре-фильтр) → Telegram
 
 Устойчивость: токен кэшируется; дедуп по id; все «обогащающие» узлы — onError continue.
 
@@ -112,7 +112,7 @@ const sent=new Set(store.sent_ids||[]);
 const vacs=[]; for(const it of $input.all()){const j=it.json||{}; if(Array.isArray(j.items))j.items.forEach(v=>vacs.push(v)); else vacs.push(j);}
 const uniq=new Set(); const scored=[];
 for(const v of vacs){const m=fromHH(v); const r=scoreVac(m.title,m.description,m.salary);
-  if(r.score>=PROFILE.thresholds.digest && v.id && !uniq.has(m.id)){uniq.add(m.id);
+  if(r.score>=PROFILE.thresholds.skip_below && v.id && !uniq.has(m.id)){uniq.add(m.id);
     scored.push({hh_id:String(v.id), snippet_score:r.score, ...m});}}
 scored.sort((a,b)=>b.snippet_score-a.snippet_score);
 const fresh=scored.filter(v=>!sent.has(v.id)).slice(0,12);   // ограничим объём LLM/запросов
@@ -124,27 +124,37 @@ return fresh.map(v=>({json:v}));
 BUILD_GLUE = r'''
 const fulls=$('get full vacancy').all();
 let llms=[]; try{ llms=$('LLM почему подходит').all(); }catch(e){}
+function parseJudge(txt){ if(!txt) return null; const s=String(txt); const a=s.indexOf('{'), b=s.lastIndexOf('}'); if(a<0||b<0||b<a) return null; try{ return JSON.parse(s.slice(a,b+1)); }catch(e){ return null; } }
+const MIN=PROFILE.thresholds.digest;
 const rows=[];
 for(let i=0;i<fulls.length;i++){
   const v=(fulls[i]&&fulls[i].json)||{};
   if(!v.name) continue;
   const ks=(v.key_skills||[]).map(k=>k.name||k).join(', ');
   const desc=strip(v.description)+' '+ks;
-  const r=scoreVac(v.name, desc, v.salary);
-  let reason=''; try{ const lj=(llms[i]&&llms[i].json)||{}; reason=strip((lj.message&&lj.message.content)||lj.text||lj.content||''); }catch(e){}
-  rows.push({score:r.score, best_role:r.best_role, matched:r.matched, name:v.name,
+  const kw=scoreVac(v.name, desc, v.salary);   // keyword — фолбэк, если судья недоступен
+  let raw=''; try{ const lj=(llms[i]&&llms[i].json)||{}; raw=(lj.message&&lj.message.content)||lj.text||lj.content||''; }catch(e){}
+  const j=parseJudge(raw);
+  const score=(j&&isFinite(+j.fit_score))?Math.round(+j.fit_score):kw.score;
+  const why=(j&&j.why)?strip(j.why):'';
+  const gaps=(j&&Array.isArray(j.gaps))?j.gaps.slice(0,2):[];
+  const level=(j&&j.level_match)?String(j.level_match):'';
+  if(score<MIN) continue;
+  rows.push({score, why, gaps, level, best_role:kw.best_role, matched:kw.matched, name:v.name,
     company:(v.employer||{}).name||'', area:(v.area||{}).name||'', salary:v.salary,
-    url:v.alternate_url||('https://hh.ru/vacancy/'+v.id), reason});
+    url:v.alternate_url||('https://hh.ru/vacancy/'+v.id)});
 }
 rows.sort((a,b)=>b.score-a.score);
 if(rows.length===0) return [];
 const today=new Date().toLocaleDateString('ru-RU');
-const header='🗞 Вакансии на '+today+' — '+rows.length+' новых релевантных\n';
+const header='🗞 Вакансии на '+today+' — '+rows.length+' под твой профиль\n';
 const blocks=rows.map(v=>{
   let b=v.score+'/100 · '+v.name+'\n';
   b+='🏢 '+(v.company||'—')+' · 📍 '+(v.area||'—')+' · 💰 '+fmtSal(v.salary)+'\n';
-  if(v.reason) b+='💡 '+v.reason.slice(0,220)+'\n';
+  if(v.why) b+='💡 '+v.why.slice(0,240)+'\n';
   else b+='🎯 '+v.best_role+' · ✓ '+(v.matched||[]).join(', ')+'\n';
+  if(v.gaps&&v.gaps.length) b+='⚠️ '+v.gaps.join('; ').slice(0,200)+'\n';
+  if(v.level&&v.level!=='в уровень') b+='📊 уровень: '+v.level+'\n';
   b+='🔗 '+(v.url||'')+'\n';
   return b;
 });
@@ -155,17 +165,43 @@ if(cur.trim()) msgs.push(cur);
 return msgs.map(m=>({ json: { digest: m, count: rows.length } }));
 '''
 
-LLM_PROMPT = ("=Ты — HR-эксперт по подбору топ-менеджеров. В 1–2 предложениях (до 280 символов, "
-              "по-русски, без префиксов и без JSON) объясни, почему эта вакансия подходит кандидату "
-              "и на что обратить внимание.\n\n"
-              "Кандидат: Коммерческий/маркетинговый директор (CMO/CCO), 16+ лет. Сильные стороны: "
-              "P&L, управление продажами и маркетингом, ROMI/CAC/LTV, бренд и PR tier-1, CRM-маркетинг, "
-              "запуск и масштабирование, B2B Enterprise/B2G/B2C; отрасли — IT/SaaS, девелопмент, ритейл. "
-              "Доход от 450к (цель 600–900к).\n\n"
-              "Вакансия:\n"
-              "Название: {{ $json.name }}\n"
-              "Ключевые навыки: {{ ($json.key_skills || []).map(k => k.name).join(', ') }}\n"
-              "Описание: {{ ($json.description || '').replace(/<[^>]+>/g,' ').slice(0, 1500) }}")
+# Карточка экспертизы — выжимка из resume/master_cco.md (источник правды о реальном опыте).
+EXPERTISE_CARD = (
+    "Скворцов Павел, коммерческий/маркетинговый директор (CCO/CMO), 16+ лет. Логика P&L, ROMI, CAC/LTV. Реальный опыт:\n"
+    "- CCO федеральной сети TERMOLAND (B2C): рост с 3 до 14 объектов, +40% чек, +50% поток, медиабюджет >5 млн/мес, подписная модель, CRM-воронка, AI-инструменты.\n"
+    "- CCO IT-стартапа Rukki.pro (B2B): отдел продаж с нуля, x8 доходности за 3 мес, контракты с Топ-5 застройщиков, резидент Skolkovo.\n"
+    "- CMO Pragmacore (ERP, B2B Enterprise/B2G): вывод продукта в Топ-5 рынка, план выручки 150 млн, PR в РБК/Forbes/Ведомости.\n"
+    "- Руководитель маркетинга в девелопменте (ASTERUS, Главстрой, НДВ): отделы с нуля, performance, бренд, снижение CPL.\n"
+    "Силён: коммерческий блок (продажи+маркетинг+продукт), стратегия и бюджетирование, построение отделов с нуля, "
+    "ROMI/CAC/LTV/CPL, CRM-маркетинг/retention/подписки, бренд и PR tier-1, AI-инструменты. "
+    "Отрасли: IT/SaaS, девелопмент/недвижимость, ритейл, услуги. Рынки B2B Enterprise/B2G/B2C.\n"
+    "Уровень: директор функции / C-level. Английский B1. Москва, не готов к переезду (командировки ок). "
+    "Доход: цель 600-900к, мягкий пол 450к."
+)
+
+# LLM-судья: оценивает попадание вакансии под реальный опыт и УРОВЕНЬ (не по словам), возвращает JSON.
+LLM_PROMPT = (
+    "=Ты — придирчивый карьерный эксперт уровня Executive Search. Оцени, насколько вакансия подходит "
+    "КОНКРЕТНОМУ кандидату по его реальному опыту и УРОВНЮ, а не по совпадению слов.\n\n"
+    "КАНДИДАТ (источник правды о его опыте):\n" + EXPERTISE_CARD + "\n\n"
+    "КРИТЕРИИ (думай по сути):\n"
+    "1. Функция: коммерция / маркетинг / рост — его поле.\n"
+    "2. УРОВЕНЬ: целевая полка — ДИРЕКТОР ФУНКЦИИ / C-level (CCO, CMO, директор по развитию/продажам, "
+    "глава направления, вице-президент) = «в уровень». Руководитель группы, тимлид, старший/рядовой "
+    "менеджер, специалист, координатор = «ниже» = низкий балл. Первое лицо крупной корпорации = «выше» = риск.\n"
+    "3. Отрасль: IT/SaaS, девелопмент/недвижимость, ритейл, услуги — близко (но отрасль не вето).\n"
+    "4. Требования: что он реально закрывает опытом, чего не хватает.\n"
+    "5. Красные флаги: продажи «в полях», пустой титул, агентство/массовый найм, переезд (не готов), "
+    "узкая нерелевантная специфика.\n\n"
+    "Верни СТРОГО валидный JSON (без markdown, без пояснений вне JSON):\n"
+    '{"fit_score":0-100,"level_match":"ниже|в уровень|выше","why":"1-2 предложения, почему релевантно '
+    'ИМЕННО его опыту, с конкретикой","gaps":["чего не хватает / на что смотреть"],'
+    '"risks":["красные флаги — может быть пусто"]}\n'
+    "fit_score: 80+ сильное попадание в его профиль; 55-79 релевантно; <55 слабо. Понижение по уровню = ниже 55.\n\n"
+    "ВАКАНСИЯ:\n"
+    "Название: {{ $json.name }}\n"
+    "Ключевые навыки: {{ ($json.key_skills || []).map(k => (k && k.name) || k).join(', ') }}\n"
+    "Описание: {{ ($json.description || '').toString().replace(/<[^>]+>/g,' ').slice(0, 1800) }}")
 
 # facancy.ru: сбор по API (/api/v1/vacancies?page=N) + фильтр 450к/без вилки + скоринг + дедуп
 FAC_FETCH_GLUE = r'''
@@ -186,7 +222,7 @@ for(const v of all){
   if(top!==null && top<450000) continue;                 // от 450к ИЛИ без вилки
   const id='fac-'+v.id; const desc=strip(v.text);
   const r=scoreVac(v.title, desc, salary);
-  if(r.score>=PROFILE.thresholds.digest && !uniq.has(id)){ uniq.add(id);
+  if(r.score>=PROFILE.thresholds.skip_below && !uniq.has(id)){ uniq.add(id);
     rel.push({id, source:'facancy', name:v.title, area:v.city||'', salary,
       url:'https://facancy.ru/vacancies/'+v.slug, description:desc,
       score:r.score, best_role:r.best_role, matched:r.matched}); }
@@ -271,8 +307,8 @@ def build():
                      "sendHeaders": True, "headerParameters": SEARCH_HEADERS, "options": {}},
                     [180, 260], extra={"onError": "continueRegularOutput", "retryOnFail": True, "maxTries": 2, "waitBetweenTries": 3000})
     n_llm = node("LLM почему подходит", "@n8n/n8n-nodes-langchain.openAi", 1.8,
-                 {"modelId": {"__rl": True, "value": "gpt-4.1-nano", "mode": "list",
-                              "cachedResultName": "GPT-4.1-NANO"},
+                 {"modelId": {"__rl": True, "value": "gpt-4o", "mode": "list",
+                              "cachedResultName": "GPT-4O"},
                   "messages": {"values": [{"content": LLM_PROMPT}]}, "options": {}},
                  [380, 260], creds={"openAiApi": OPENAI_CRED}, extra=cont)
     n_build = node("build digest", "n8n-nodes-base.code", 2,
@@ -287,8 +323,8 @@ def build():
                  {"jsCode": (SCORE_FUNCS + FAC_FETCH_GLUE).replace("__PROFILE__", PJSON)},
                  [-20, 560], extra=cont)
     n_fac_llm = node("facancy: LLM", "@n8n/n8n-nodes-langchain.openAi", 1.8,
-                     {"modelId": {"__rl": True, "value": "gpt-4.1-nano", "mode": "list",
-                                  "cachedResultName": "GPT-4.1-NANO"},
+                     {"modelId": {"__rl": True, "value": "gpt-4o", "mode": "list",
+                                  "cachedResultName": "GPT-4O"},
                       "messages": {"values": [{"content": LLM_PROMPT}]}, "options": {}},
                      [380, 560], creds={"openAiApi": OPENAI_CRED}, extra=cont)
     n_fac_build = node("facancy: дайджест", "n8n-nodes-base.code", 2,
