@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 
 import llm
 import tailor as tailor_mod
+import verify
 
 CONTACTS = {
     "full_name": "Скворцов Павел Валерьевич",
@@ -178,6 +179,7 @@ class Application:
     recommendations: dict = field(default_factory=dict)
     review: dict = field(default_factory=dict)
     notes: list = field(default_factory=list)
+    warnings: list = field(default_factory=list)  # факты для ручной проверки перед отправкой
 
 
 def _vacancy_block(vacancy: dict) -> str:
@@ -259,6 +261,52 @@ def _review(vacancy: dict, master_md: str, draft: dict) -> tuple[dict, str]:
     return {}, "проверка пропущена"
 
 
+def _qa_pass(vacancy: dict, master_md: str, preferences: str, draft: dict,
+             notes: list[str], lean: bool, allow_refine: bool) -> tuple[dict, list[str]]:
+    """Детерминированный контроль качества поверх LLM (verify.py):
+
+    1) анти-галлюцинация — числа/компании, которых нет в мастер-резюме;
+    2) ATS-дотяжка — требования вакансии, подтверждённые мастером, но не отражённые в резюме.
+
+    Если есть что чинить и разрешён доп. проход — даём писателю один точечный регЕн
+    с конкретными правками. Что осталось неподтверждённым — возвращаем как warnings,
+    чтобы бот показал «проверь перед отправкой» (а не отправил молча выдумку)."""
+    resume = draft.get("resume", {}) or {}
+    figs = verify.figures_to_check(draft.get("cover_letter", ""), resume, master_md)
+    companies = verify.unknown_companies(resume, master_md)
+    gaps = verify.unsurfaced_supported_skills(vacancy, resume, master_md)
+
+    if (figs or companies or gaps) and allow_refine:
+        fixes: list[str] = []
+        if figs:
+            fixes.append("Этих чисел/метрик НЕТ в мастер-резюме — убери их или замени на "
+                         "реальные из мастер-резюме, не выдумывай: " + "; ".join(figs))
+        if companies:
+            fixes.append("В опыте есть места работы, которых нет в мастер-резюме — используй "
+                         "только реальные компании из мастера: " + "; ".join(companies))
+        if gaps:
+            fixes.append("Эти требования вакансии подтверждаются мастер-резюме, но не отражены "
+                         "в компетенциях/опыте — добавь их естественно, без воды и без выдумки: "
+                         + "; ".join(gaps))
+        try:
+            refined = _generate(vacancy, master_md, preferences, fixes=fixes, lean=lean)
+            if refined.get("resume") and refined.get("cover_letter"):
+                draft = refined
+                resume = draft.get("resume", {}) or {}
+                notes.append("QA-проход: дотяжка навыков + чистка фактов")
+                figs = verify.figures_to_check(draft.get("cover_letter", ""), resume, master_md)
+                companies = verify.unknown_companies(resume, master_md)
+        except llm.LLMError as e:
+            notes.append(f"QA-проход пропущен ({e})")
+
+    warnings: list[str] = []
+    if figs:
+        warnings.append("проверь цифры (не нашёл в мастер-резюме): " + ", ".join(figs))
+    if companies:
+        warnings.append("проверь компании (не нашёл в мастер-резюме): " + ", ".join(companies))
+    return draft, warnings
+
+
 def prepare_application(vacancy: dict, master_md: str | None = None,
                         preferences: str = "") -> Application:
     """Полный двухагентный цикл. Возвращает Application с резюме и письмом."""
@@ -285,6 +333,13 @@ def prepare_application(vacancy: dict, master_md: str | None = None,
             except llm.LLMError as e:
                 notes.append(f"правка пропущена ({e}) — оставлен первый вариант")
 
+    # QA поверх LLM: анти-галлюцинация + ATS-дотяжка. В премиум-режиме критик уже мог
+    # внести правку — тогда лишний регЕн не гоняем (verify всё равно отдаст warnings).
+    allow_refine = os.environ.get("CAREER_QA_REFINE", "1").strip().lower() not in ("0", "false", "no")
+    if review.get("verdict") == "revise":
+        allow_refine = False
+    draft, warnings = _qa_pass(vacancy, master_md, preferences, draft, notes, lean, allow_refine)
+
     resume = draft.get("resume", {})
     resume.setdefault("full_name", CONTACTS["full_name"])
     resume.setdefault("contacts", {}).update({k: v for k, v in CONTACTS.items() if k != "full_name"
@@ -297,6 +352,7 @@ def prepare_application(vacancy: dict, master_md: str | None = None,
         recommendations=draft.get("recommendations", {}),
         review=review,
         notes=notes,
+        warnings=warnings,
     )
 
 

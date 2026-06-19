@@ -36,6 +36,7 @@ import apply as apply_mod
 import career_agent
 import hh_app
 import tailor as tailor_mod
+import verify
 import webvac
 
 API = "https://api.telegram.org/bot{token}/{method}"
@@ -243,29 +244,12 @@ def _handle_confirm(chat_id, token: str) -> None:
 def _keyword_match(vacancy: dict, resume: dict) -> str:
     """ATS-сигнал (механика Jobscan): покрывает ли резюме ключевые навыки вакансии.
 
-    Берём key_skills вакансии и ищем их (по значимым словам) в компетенциях/профиле/
-    опыте/инструментах адаптированного резюме. Показываем процент и что не отражено —
-    чтобы было видно, насколько резюме «подсвечено» под вакансию для скрининга."""
-    skills = [s.get("name", "").strip() for s in (vacancy.get("key_skills") or []) if s.get("name")]
-    if not skills:
+    Логика матчинга — общая с QA-проходом (src/verify.py), чтобы цифра в боте и
+    дотяжка в пайплайне не расходились."""
+    cov, total, miss = verify.keyword_match(vacancy, resume)
+    if not total:
         return ""
-    hay = " ".join([
-        " ".join(resume.get("competencies", []) or []),
-        resume.get("profile", "") or "",
-        " ".join(t for e in (resume.get("experience") or [])
-                 for t in (e.get("responsibilities", []) + e.get("achievements", []))),
-        " ".join(resume.get("tools", []) or []),
-        " ".join(resume.get("skill_set", []) or []),  # запасной путь tailor
-    ]).lower()
-
-    def covered(skill: str) -> bool:
-        words = [w for w in re.findall(r"\w+", skill.lower()) if len(w) > 3]
-        return any(w in hay for w in words) if words else skill.lower() in hay
-
-    miss = [s for s in skills if not covered(s)]
-    cov = len(skills) - len(miss)
-    pct = round(100 * cov / len(skills))
-    line = f"🎯 Соответствие навыкам вакансии: {cov}/{len(skills)} ({pct}%)"
+    line = f"🎯 Соответствие навыкам вакансии: {cov}/{total} ({round(100 * cov / total)}%)"
     if miss:
         line += "\n_Не отражены:_ " + ", ".join(miss[:8])
     return line
@@ -306,6 +290,11 @@ def _handle_assist(chat_id, url: str) -> None:
         head += f"_Проверка:_ {app.review.get('verdict')} {app.review.get('score', '')}/100"
     send(chat_id, head.rstrip())
     send(chat_id, "✉️ *Сопроводительное:*\n" + (app.cover_letter or "—"))
+
+    # Анти-галлюцинация: факты, которых нет в мастер-резюме — на ручную проверку.
+    if app.warnings:
+        send(chat_id, "⚠️ *Проверь перед отправкой* (мог не сверить с мастер-резюме):\n- "
+             + "\n- ".join(app.warnings))
 
     # Резюме файлами (PDF + DOCX). Если пакетов рендера нет — отдадим текстом.
     try:
