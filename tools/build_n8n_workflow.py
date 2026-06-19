@@ -6,8 +6,9 @@
 Поток:
   Schedule(каждые 2ч 9-21)/Manual → today → HH token (минт, не падает при лимите)
     → HH token (cache) [staticData + сид-фолбэк]
+    → HH мои отклики (/negotiations; личный токен → исключаем уже-откликнутые; app-токен → 403/skip)
     → HH «Коммерческий директор» / «Директор по маркетингу» (Bearer; salary>=450k ИЛИ без вилки)
-    → Merge → score+dedup (LIST, скоринг по сниппету, дедуп в staticData)
+    → Merge → score+dedup (LIST, скоринг по сниппету, дедуп + минус уже-откликнутые, staticData)
     → get full vacancy (/vacancies/{id}) → LLM-судья по мастер-резюме (OpenAI gpt-4o, JSON fit)
     → build digest (ранжирование по fit судьи; keyword — фолбэк + пре-фильтр) → Telegram
 
@@ -109,10 +110,19 @@ function fmtSal(s){ if(!s||(!s.from&&!s.to))return 'з/п не указана';
 LIST_GLUE = r'''
 const store=$getWorkflowStaticData('global');
 const sent=new Set(store.sent_ids||[]);
+// Уже откликнутые на hh.ru (история /negotiations). Требует ЛИЧНОГО токена HH; на app-токене
+// узел «HH мои отклики» отдаёт 403 (onError continue) → applied останется прежним и фильтр
+// просто не применится. Запоминаем в staticData, чтобы разовый сбой не вернул откликнутые.
+let applied=new Set(store.applied_ids||[]);
+try{ for(const it of $('HH мои отклики').all()){ const j=(it&&it.json)||{};
+  const arr=Array.isArray(j.items)?j.items:(j&&j.id?[j]:[]);
+  for(const n of arr){ const vid=(n&&n.vacancy&&n.vacancy.id)||(n&&n.vacancy_id);
+    if(vid) applied.add('hh-'+String(vid)); } } }catch(e){}
+store.applied_ids=Array.from(applied).slice(-8000);
 const vacs=[]; for(const it of $input.all()){const j=it.json||{}; if(Array.isArray(j.items))j.items.forEach(v=>vacs.push(v)); else vacs.push(j);}
 const uniq=new Set(); const scored=[];
 for(const v of vacs){const m=fromHH(v); const r=scoreVac(m.title,m.description,m.salary);
-  if(r.score>=PROFILE.thresholds.skip_below && v.id && !uniq.has(m.id)){uniq.add(m.id);
+  if(r.score>=PROFILE.thresholds.skip_below && v.id && !uniq.has(m.id) && !applied.has(m.id)){uniq.add(m.id);
     scored.push({hh_id:String(v.id), snippet_score:r.score, ...m});}}
 scored.sort((a,b)=>b.snippet_score-a.snippet_score);
 const fresh=scored.filter(v=>!sent.has(v.id)).slice(0,12);   // ограничим объём LLM/запросов
@@ -293,6 +303,13 @@ def build():
                        {"name": "client_secret", "value": HH_CLIENT_SECRET}]},
                    "options": {}}, [-620, 60], extra=cont)
     n_pick = node("HH token (cache)", "n8n-nodes-base.code", 2, {"jsCode": PICK_JS}, [-620, 250])
+    # История откликов соискателя: чтобы не показывать вакансии, на которые уже откликнулся
+    # (ручные на hh.ru + через бота). Нужен ЛИЧНЫЙ токен HH; на app-токене → 403 (continue).
+    n_apps = node("HH мои отклики", "n8n-nodes-base.httpRequest", 4.2,
+                  {"url": "=https://api.hh.ru/negotiations?per_page=100&page=0",
+                   "sendHeaders": True, "headerParameters": SEARCH_HEADERS, "options": {}},
+                  [-420, -40],
+                  extra={"onError": "continueRegularOutput", "retryOnFail": True, "maxTries": 2, "waitBetweenTries": 3000})
     n_hh1 = node("HH Коммерческий директор", "n8n-nodes-base.httpRequest", 4.2,
                  {"url": "=https://api.hh.ru/vacancies", "sendQuery": True, "specifyQuery": "json",
                   "jsonQuery": HH_QUERY % {"role": "Коммерческий директор", "sal": SALARY_MIN},
@@ -349,7 +366,7 @@ def build():
                     [780, 560], creds={"telegramApi": TELEGRAM_CRED},
                     extra={"retryOnFail": True, "maxTries": 3, "waitBetweenTries": 2000})
 
-    nodes = [n_manual, n_sched, n_today, n_mint, n_pick, n_hh1, n_hh2, n_merge,
+    nodes = [n_manual, n_sched, n_today, n_mint, n_pick, n_apps, n_hh1, n_hh2, n_merge,
              n_list, n_getvac, n_llm, n_build, n_tg,
              n_fac, n_fac_llm, n_fac_build, n_fac_tg]
     connections = {}
@@ -373,8 +390,10 @@ def build():
             {"node": "today", "type": "main", "index": 0})
     add(n_today, n_mint)
     add(n_mint, n_pick)
-    add(n_pick, n_hh1)
-    add(n_pick, n_hh2)
+    # token cache → история откликов → оба HH-поиска (гарантируем, что отклики получены до score+dedup)
+    add(n_pick, n_apps)
+    add(n_apps, n_hh1)
+    add(n_apps, n_hh2)
     connections.setdefault("HH Коммерческий директор", {}).setdefault("main", [[]])[0].append(
         {"node": "Merge", "type": "main", "index": 0})
     connections.setdefault("HH Директор по маркетингу", {}).setdefault("main", [[]])[0].append(
