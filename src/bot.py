@@ -143,8 +143,9 @@ def _handle_photo(chat_id, msg: dict) -> bool:
     except Exception as e:  # noqa: BLE001
         send(chat_id, f"⚠️ Не смог сохранить фото: {e}")
         return True
-    send(chat_id, "📸 Фото сохранил — добавлю его в резюме (PDF и DOCX).\n"
-                  "Теперь пришли ссылку на вакансию — пришлю резюме уже с фото.")
+    send(chat_id, "📸 Фото сохранил навсегда — теперь оно ставится во *все* резюме "
+                  "автоматически (PDF и DOCX). Повторно присылать не нужно.\n"
+                  "Чтобы заменить — пришли новое фото; статус виден в /health.")
     return True
 
 
@@ -347,6 +348,15 @@ def _health_text() -> str:
                          "`hh-applicant-tool authorize` (см. docs/QUICKSTART.md)")
     except Exception as e:  # noqa: BLE001
         lines.append(f"• HH (отклики): ❌ {e}")
+
+    # Фото в резюме — ставится автоматически, если сохранено.
+    try:
+        import resume_doc  # noqa: PLC0415
+        photo = resume_doc._find_photo()
+    except Exception:  # noqa: BLE001
+        photo = ""
+    lines.append("• Фото в резюме: ✅ сохранено, ставится автоматически" if photo
+                 else "• Фото в резюме: ⚠️ не задано — пришли фото боту один раз")
 
     paused = "⏸ да" if apply_mod.is_paused() else "▶️ нет"
     lines.append("")
