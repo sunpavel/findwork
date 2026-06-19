@@ -143,13 +143,12 @@ for(let i=0;i<fulls.length;i++){
   if(score<MIN) continue;
   rows.push({score, why, gaps, level, best_role:kw.best_role, matched:kw.matched, name:v.name,
     company:(v.employer||{}).name||'', area:(v.area||{}).name||'', salary:v.salary,
-    published:v.published_at||'', url:v.alternate_url||('https://hh.ru/vacancy/'+v.id)});
+    published:v.published_at||'', hh_id:String(v.id||''), url:v.alternate_url||('https://hh.ru/vacancy/'+v.id)});
 }
 rows.sort((a,b)=>b.score-a.score);
 if(rows.length===0) return [];
-const today=new Date().toLocaleDateString('ru-RU');
-const header='🗞 Вакансии на '+today+' — '+rows.length+' под твой профиль\n';
-const blocks=rows.map(v=>{
+// одна карточка = одно сообщение; кнопки (Отклик/👍/👎) вешает Telegram-нода по hhid/id
+return rows.map(v=>{
   let b=v.score+'/100 · '+v.name+'\n';
   b+='🏢 '+(v.company||'—')+' · 📍 '+(v.area||'—')+' · 💰 '+fmtSal(v.salary)+'\n';
   if(v.why) b+='💡 '+v.why.slice(0,240)+'\n';
@@ -158,14 +157,9 @@ const blocks=rows.map(v=>{
   const fr=ago(v.published); const lv=(v.level&&v.level!=='в уровень')?('📊 '+v.level):'';
   const meta=[fr?('🕐 '+fr):'', lv].filter(Boolean).join(' · ');
   if(meta) b+=meta+'\n';
-  b+='🔗 '+(v.url||'')+'\n';
-  return b;
+  b+='🔗 '+(v.url||'');
+  return { json: { text:b, hhid:v.hh_id, id:'hh-'+v.hh_id } };
 });
-// Telegram: лимит 4096 символов → пакуем блоки в сообщения <= 3800
-const LIMIT=3800; const msgs=[]; let cur=header;
-for(const b of blocks){ if((cur+'\n'+b).length>LIMIT){ msgs.push(cur); cur=b; } else { cur+='\n'+b; } }
-if(cur.trim()) msgs.push(cur);
-return msgs.map(m=>({ json: { digest: m, count: rows.length } }));
 '''
 
 # Карточка экспертизы — выжимка из resume/master_cco.md (источник правды о реальном опыте).
@@ -240,22 +234,29 @@ return fresh.map(v=>({json:v}));
 FAC_BUILD_GLUE = r'''
 const items=$('facancy: сбор+скоринг').all();
 let llms=[]; try{ llms=$('facancy: LLM').all(); }catch(e){}
+function parseJudge(txt){ if(!txt) return null; const s=String(txt); const a=s.indexOf('{'), b=s.lastIndexOf('}'); if(a<0||b<0||b<a) return null; try{ return JSON.parse(s.slice(a,b+1)); }catch(e){ return null; } }
+const MIN=PROFILE.thresholds.digest;
 const rows=[];
 for(let i=0;i<items.length;i++){ const v=items[i].json||{};
-  let reason=''; try{ const lj=(llms[i]&&llms[i].json)||{}; reason=strip((lj.message&&lj.message.content)||lj.text||lj.content||''); }catch(e){}
-  rows.push(Object.assign({}, v, {reason})); }
+  let raw=''; try{ const lj=(llms[i]&&llms[i].json)||{}; raw=(lj.message&&lj.message.content)||lj.text||lj.content||''; }catch(e){}
+  const j=parseJudge(raw);
+  const score=(j&&isFinite(+j.fit_score))?Math.round(+j.fit_score):(v.score||0);
+  const why=(j&&j.why)?strip(j.why):'';
+  const gaps=(j&&Array.isArray(j.gaps))?j.gaps.slice(0,2):[];
+  const level=(j&&j.level_match)?String(j.level_match):'';
+  if(score<MIN) continue;
+  rows.push(Object.assign({}, v, {score, why, gaps, level}));
+}
 rows.sort((a,b)=>b.score-a.score);
 if(rows.length===0) return [];
-const today=new Date().toLocaleDateString('ru-RU');
-const header='🗞 facancy.ru на '+today+' — '+rows.length+' новых релевантных\n';
-const blocks=rows.map(v=>{ let b=v.score+'/100 · '+v.name+'\n';
+return rows.map(v=>{ let b=v.score+'/100 · '+v.name+'\n';
   b+='🏢 facancy.ru · 📍 '+(v.area||'—')+' · 💰 '+fmtSal(v.salary)+'\n';
-  if(v.reason) b+='💡 '+v.reason.slice(0,220)+'\n'; else b+='🎯 '+v.best_role+'\n';
-  b+='🔗 '+(v.url||'')+'\n'; return b; });
-const LIMIT=3800; const msgs=[]; let cur=header;
-for(const b of blocks){ if((cur+'\n'+b).length>LIMIT){ msgs.push(cur); cur=b; } else { cur+='\n'+b; } }
-if(cur.trim()) msgs.push(cur);
-return msgs.map(m=>({ json: { digest: m, count: rows.length } }));
+  if(v.why) b+='💡 '+v.why.slice(0,240)+'\n'; else b+='🎯 '+(v.best_role||'')+'\n';
+  if(v.gaps&&v.gaps.length) b+='⚠️ '+v.gaps.join('; ').slice(0,200)+'\n';
+  if(v.level&&v.level!=='в уровень') b+='📊 '+v.level+'\n';
+  b+='🔗 '+(v.url||'');
+  return { json: { text:b, url:v.url||'', id:v.id||'' } };
+});
 '''
 
 
@@ -317,9 +318,15 @@ def build():
     n_build = node("build digest", "n8n-nodes-base.code", 2,
                    {"jsCode": (SCORE_FUNCS + BUILD_GLUE).replace("__PROFILE__", PJSON)}, [580, 260])
     n_tg = node("Telegram: дайджест", "n8n-nodes-base.telegram", 1.2,
-                {"chatId": "=" + CHAT_ID, "text": "={{ $json.digest }}",
-                 "additionalFields": {"appendAttribution": False}},
-                [780, 260], creds={"telegramApi": TELEGRAM_CRED})
+                {"chatId": "=" + CHAT_ID, "text": "={{ $json.text }}",
+                 "additionalFields": {"appendAttribution": False},
+                 "replyMarkup": "inlineKeyboard",
+                 "inlineKeyboard": {"rows": [{"row": {"buttons": [
+                     {"text": "📝 Отклик", "additionalFields": {"callback_data": "=ap:{{ $json.hhid }}"}},
+                     {"text": "👍", "additionalFields": {"callback_data": "=up:{{ $json.id }}"}},
+                     {"text": "👎", "additionalFields": {"callback_data": "=dn:{{ $json.id }}"}}]}}]}},
+                [780, 260], creds={"telegramApi": TELEGRAM_CRED},
+                extra={"retryOnFail": True, "maxTries": 3, "waitBetweenTries": 2000})
 
     # --- независимая ветка facancy.ru ---
     n_fac = node("facancy: сбор+скоринг", "n8n-nodes-base.code", 2,
@@ -333,9 +340,14 @@ def build():
     n_fac_build = node("facancy: дайджест", "n8n-nodes-base.code", 2,
                        {"jsCode": (SCORE_FUNCS + FAC_BUILD_GLUE).replace("__PROFILE__", PJSON)}, [580, 560])
     n_fac_tg = node("Telegram facancy", "n8n-nodes-base.telegram", 1.2,
-                    {"chatId": "=" + CHAT_ID, "text": "={{ $json.digest }}",
-                     "additionalFields": {"appendAttribution": False}},
-                    [780, 560], creds={"telegramApi": TELEGRAM_CRED})
+                    {"chatId": "=" + CHAT_ID, "text": "={{ $json.text }}",
+                     "additionalFields": {"appendAttribution": False},
+                     "replyMarkup": "inlineKeyboard",
+                     "inlineKeyboard": {"rows": [{"row": {"buttons": [
+                         {"text": "👍", "additionalFields": {"callback_data": "=up:{{ $json.id }}"}},
+                         {"text": "👎", "additionalFields": {"callback_data": "=dn:{{ $json.id }}"}}]}}]}},
+                    [780, 560], creds={"telegramApi": TELEGRAM_CRED},
+                    extra={"retryOnFail": True, "maxTries": 3, "waitBetweenTries": 2000})
 
     nodes = [n_manual, n_sched, n_today, n_mint, n_pick, n_hh1, n_hh2, n_merge,
              n_list, n_getvac, n_llm, n_build, n_tg,
