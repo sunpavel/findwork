@@ -191,8 +191,15 @@ def _generate(vacancy: dict, master_md: str, preferences: str,
     if fixes:
         user += ("\n\n=== ЗАМЕЧАНИЯ РЕВИЗОРА (исправь и верни JSON заново) ===\n- "
                  + "\n- ".join(fixes))
-    return llm.complete_json(STRATEGIST_SYSTEM, user, provider=provider,
-                             model=model, max_tokens=12000)
+    # Бесплатные модели иногда отдают пустой/битый JSON — даём одну повторную попытку.
+    last: llm.LLMError | None = None
+    for _ in range(2):
+        try:
+            return llm.complete_json(STRATEGIST_SYSTEM, user, provider=provider,
+                                     model=model, max_tokens=12000)
+        except llm.LLMError as e:
+            last = e
+    raise last if last else llm.LLMError("генерация не удалась")
 
 
 def _review(vacancy: dict, master_md: str, draft: dict) -> tuple[dict, str]:
@@ -207,8 +214,8 @@ def _review(vacancy: dict, master_md: str, draft: dict) -> tuple[dict, str]:
             rep = llm.complete_json(REVIEWER_SYSTEM, user, provider=provider,
                                     model=model, max_tokens=4000)
             return rep, f"{provider}/{model or 'default'}"
-        except llm.LLMError:
-            continue  # нет кредитов/ключа — пробуем запасного
+        except Exception:  # noqa: BLE001 — нет ключа/кредитов или битый JSON: пробуем запасного
+            continue
     return {}, "проверка пропущена"
 
 
@@ -226,8 +233,13 @@ def prepare_application(vacancy: dict, master_md: str | None = None,
     notes.append(f"проверил {who}")
 
     if review.get("verdict") == "revise" and review.get("fixes"):
-        draft = _generate(vacancy, master_md, preferences, fixes=review["fixes"])
-        notes.append(f"внесена 1 правка по {len(review['fixes'])} замечаниям")
+        # Правка — улучшение, а не обязательный шаг: если free-модель вернёт пустой/
+        # битый ответ, оставляем первый удачный черновик, а не валим весь пайплайн.
+        try:
+            draft = _generate(vacancy, master_md, preferences, fixes=review["fixes"])
+            notes.append(f"внесена 1 правка по {len(review['fixes'])} замечаниям")
+        except llm.LLMError as e:
+            notes.append(f"правка пропущена ({e}) — оставлен первый вариант")
 
     resume = draft.get("resume", {})
     resume.setdefault("full_name", CONTACTS["full_name"])

@@ -129,8 +129,15 @@ def complete(system: str, user: str, *, provider: str, model: str | None = None,
 
 
 def _extract_json(text: str) -> dict:
-    """Достаёт JSON-объект из ответа (на случай обёрток ```json / преамбул)."""
-    text = text.strip()
+    """Достаёт JSON-объект из ответа (на случай обёрток ```json / преамбул).
+
+    Пустой ответ (бесплатные reasoning-модели иногда отдают content="") и
+    неразбираемый текст превращаем в LLMError — чтобы пайплайн мог деградировать,
+    а не падать сырым JSONDecodeError.
+    """
+    text = (text or "").strip()
+    if not text:
+        raise LLMError("пустой ответ модели (нет JSON)")
     m = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, flags=re.S)
     if m:
         text = m.group(1)
@@ -140,8 +147,11 @@ def _extract_json(text: str) -> dict:
         # берём от первой { до последней }
         i, j = text.find("{"), text.rfind("}")
         if i != -1 and j != -1 and j > i:
-            return json.loads(text[i:j + 1])
-        raise
+            try:
+                return json.loads(text[i:j + 1])
+            except json.JSONDecodeError:
+                pass
+        raise LLMError(f"ответ не похож на JSON: {text[:200]!r}")
 
 
 def complete_json(system: str, user: str, *, provider: str, model: str | None = None,
