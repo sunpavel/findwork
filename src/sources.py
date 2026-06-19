@@ -228,16 +228,31 @@ def hh_source(profile: dict, since_days: int = 2, **_) -> list[dict]:
     return result
 
 
+# Проверенные публичные каналы с вакансиями уровня кандидата (коммерческий директор/CCO,
+# директор по маркетингу/CMO, руководитель/C-level). Отобраны скрейпом t.me/s/ по реальной
+# плотности директорских/коммерческих/маркетинговых вакансий (см. webchan.py). Это дефолт —
+# переопределяется env TG_CHANNELS="@a,@b". Нерелевантные посты отсеет LLM-судья по резюме.
+DEFAULT_TG_CHANNELS = [
+    "vacanciesrus",   # директора по маркетингу/CMO, Head of Growth, коммерч. директора
+    "finexecutive",   # управляющие/коммерческие директора, C-level (финансы/IT/консалтинг)
+    "theypaywell",    # руководители/директора с доходом >100к
+    "marketing_jobs", # маркетинг/бренд/директор по маркетингу, в основном Москва
+    "perezvonyu",     # digital/PR/маркетинг с контактами работодателей, Москва
+    "prwork",         # PR/маркетинг senior (зам. PR-директора и т.п.)
+    "morejobs",       # руководящие позиции в маркетинге/коммерции
+]
+
+
 def tgchannels_source(profile: dict, **_) -> list[dict]:
     """Вакансии из публичных Telegram-каналов (см. src/webchan.py).
 
-    Список каналов — из env TG_CHANNELS="@channel1,@channel2" (хендлы хедхантерских/
-    профильных каналов). Без списка источник пуст. Релевантность отсеет нерелевантное."""
+    Каналы: env TG_CHANNELS="@a,@b" — если задан, иначе проверенный DEFAULT_TG_CHANNELS
+    (директор по маркетингу/CMO, коммерческий директор/CCO, C-level). Релевантность по
+    резюме (CCO/CMO) отсеет нерелевантное в скоринге."""
     import os  # noqa: PLC0415
     import webchan  # noqa: PLC0415
-    channels = [c.strip() for c in os.environ.get("TG_CHANNELS", "").split(",") if c.strip()]
-    if not channels:
-        return []
+    env = [c.strip() for c in os.environ.get("TG_CHANNELS", "").split(",") if c.strip()]
+    channels = env or DEFAULT_TG_CHANNELS
     return webchan.channel_vacancies(channels)
 
 

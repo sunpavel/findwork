@@ -9,7 +9,7 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PY="$REPO_DIR/.venv/bin/python"
-SOURCES="${SOURCES:-hh}"                # источники для дайджеста (hh — официальный API)
+SOURCES="${SOURCES:-hh,tgchannels}"     # источники: hh (офиц. API) + публичные Telegram-каналы
 DIGEST_TIME="${DIGEST_TIME:-09:00}"     # время утреннего дайджеста (по МСК)
 
 echo "==> Репозиторий: $REPO_DIR"
