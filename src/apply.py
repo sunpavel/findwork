@@ -157,8 +157,10 @@ def _vacancy_salary(vacancy: dict) -> dict | None:
             "currency": sal.get("currency") or "RUR"}
 
 
-def _words(s: str) -> set[str]:
-    return {w for w in re.findall(r"\w+", (s or "").lower()) if len(w) > 3}
+def _stems(s: str) -> set[str]:
+    """Основы слов (первые 5 букв) — чтобы русские словоформы совпадали:
+    «развитию»/«развития» → «разви»; «директор»/«директором» → «дирек»."""
+    return {w[:5] for w in re.findall(r"\w+", (s or "").lower()) if len(w) > 3}
 
 
 def _pick_base_resume(vacancy: dict | None = None) -> dict:
@@ -166,7 +168,7 @@ def _pick_base_resume(vacancy: dict | None = None) -> dict:
 
     HH запрещает создавать резюме через API (POST /resumes → 405), поэтому отклик
     идёт одним из уже опубликованных резюме. Берём HH_BASE_RESUME_ID, иначе резюме,
-    чьё название ближе всего к вакансии, иначе первое."""
+    чьё название ближе всего к вакансии (по основам слов), иначе первое."""
     resumes = hh_app.list_resumes()
     if not resumes:
         raise hh_app.HHAppError("у соискателя нет резюме на HH — нечем откликаться")
@@ -176,9 +178,9 @@ def _pick_base_resume(vacancy: dict | None = None) -> dict:
             if r.get("id") == env_id:
                 return r
     if vacancy:
-        vac_words = _words(vacancy.get("name", ""))
-        best = max(resumes, key=lambda r: len(vac_words & _words(r.get("title", ""))))
-        if vac_words & _words(best.get("title", "")):
+        vac = _stems(vacancy.get("name", ""))
+        best = max(resumes, key=lambda r: len(vac & _stems(r.get("title", ""))))
+        if vac & _stems(best.get("title", "")):
             return best
     return resumes[0]
 
