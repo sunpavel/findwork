@@ -141,6 +141,8 @@ def render_pdf(r: dict, path: str) -> str:
                 pdf.set_text_color(90, 90, 90)
                 pdf.multi_cell(0, 5, sub, new_x="LMARGIN", new_y="NEXT")
                 pdf.set_text_color(0, 0, 0)
+            if e.get("summary"):
+                body(e["summary"])
             bullets(e.get("responsibilities", []))
             bullets(e.get("achievements", []))
     if r.get("education"):
@@ -224,6 +226,8 @@ def render_docx(r: dict, path: str) -> str:
                 srun.italic = True
                 srun.font.size = Pt(9)
                 srun.font.color.rgb = RGBColor(0x5A, 0x5A, 0x5A)
+            if e.get("summary"):
+                doc.add_paragraph(e["summary"])
             for it in e.get("responsibilities", []) + e.get("achievements", []):
                 if it:
                     doc.add_paragraph(it, style="List Bullet")
