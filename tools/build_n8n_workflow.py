@@ -565,11 +565,24 @@ def _api(path, method="GET", payload=None):
         return json.loads(resp.read().decode())
 
 
+def _find_wf_id_by_name(name):
+    """id существующего воркфлоу по имени (чтобы обновлять его, а не плодить дубликаты)."""
+    try:
+        out = _api("/workflows")
+    except Exception:  # noqa: BLE001
+        return None
+    items = out.get("data") if isinstance(out, dict) else (out if isinstance(out, list) else [])
+    for w in items or []:
+        if w.get("name") == name:
+            return w.get("id")
+    return None
+
+
 def main():
     if not N8N_KEY:
         sys.exit("Задай N8N_KEY.")
     wf = build()
-    wf_id = os.environ.get("N8N_WF_ID")
+    wf_id = os.environ.get("N8N_WF_ID") or _find_wf_id_by_name(wf["name"])
     try:
         if wf_id:
             out = _api(f"/workflows/{wf_id}", "PUT", wf); print("ОБНОВЛЁН:", out.get("id"))
