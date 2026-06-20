@@ -122,6 +122,9 @@ def render_pdf(r: dict, path: str) -> str:
     if r.get("profile"):
         header("Профессиональный профиль")
         body(r["profile"])
+    if r.get("key_achievements"):
+        header("Ключевые достижения")
+        bullets(r["key_achievements"])
     if r.get("competencies"):
         header("Ключевые компетенции")
         body(" · ".join(r["competencies"]))
@@ -200,6 +203,11 @@ def render_docx(r: dict, path: str) -> str:
     if r.get("profile"):
         header("Профессиональный профиль")
         doc.add_paragraph(r["profile"])
+    if r.get("key_achievements"):
+        header("Ключевые достижения")
+        for it in r["key_achievements"]:
+            if it:
+                doc.add_paragraph(it, style="List Bullet")
     if r.get("competencies"):
         header("Ключевые компетенции")
         doc.add_paragraph(" · ".join(r["competencies"]))
