@@ -1,0 +1,94 @@
+{
+  "name": "Skvortsov ADV — Lead webhook (Telegram + Email)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "webhook-lead",
+      "name": "Webhook /lead",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 300],
+      "webhookId": "skvortsov-adv-lead"
+    },
+    {
+      "parameters": {
+        "chatId": "REPLACE_WITH_YOUR_TELEGRAM_CHAT_ID",
+        "text": "=🆕 Заявка с сайта Skvortsov ADV\n\n👤 Имя: {{ $json.body.name }}\n📞 Телефон: {{ $json.body.phone }}\n✉️ Email: {{ $json.body.email || '—' }}\n📝 Задача: {{ $json.body.task || '—' }}\n🔗 Страница: {{ $json.body.page }}",
+        "additionalFields": {}
+      },
+      "id": "telegram-notify",
+      "name": "Telegram уведомление",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [540, 200],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "REPLACE_WITH_YOUR_FROM_EMAIL",
+        "toEmail": "sunpavel@gmail.com",
+        "subject": "=Заявка с сайта — {{ $json.body.name }}",
+        "emailFormat": "text",
+        "text": "=Имя: {{ $json.body.name }}\nТелефон: {{ $json.body.phone }}\nEmail: {{ $json.body.email || '—' }}\nЗадача: {{ $json.body.task || '—' }}\nСтраница: {{ $json.body.page }}\nВремя: {{ $json.body.ts }}",
+        "options": {}
+      },
+      "id": "email-notify",
+      "name": "Email уведомление",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [540, 400],
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"ok\": true }",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              { "name": "Access-Control-Allow-Origin", "value": "*" }
+            ]
+          }
+        }
+      },
+      "id": "respond-ok",
+      "name": "Ответ OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [820, 300]
+    }
+  ],
+  "connections": {
+    "Webhook /lead": {
+      "main": [
+        [
+          { "node": "Telegram уведомление", "type": "main", "index": 0 },
+          { "node": "Email уведомление", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Telegram уведомление": {
+      "main": [[{ "node": "Ответ OK", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "tags": []
+}
