@@ -12,6 +12,10 @@
     → get full vacancy (/vacancies/{id}) → LLM-судья по мастер-резюме (OpenAI gpt-4o, JSON fit)
     → build digest (ранжирование по fit судьи; keyword — фолбэк + пре-фильтр) → Telegram
 
+Параллельные ветки от «today»:
+  • facancy.ru: API /api/v1/vacancies → фильтр 450к → скоринг → LLM → Telegram (👍/👎).
+  • Telegram-каналы: t.me/s/<канал> (DEFAULT_TG_CHANNELS) → отбор вакансий → скоринг → LLM → Telegram.
+
 Устойчивость: токен кэшируется; дедуп по id; все «обогащающие» узлы — onError continue.
 
 Вебхук приёма откликов от бота: POST /webhook/findwork-applied {"applied_ids":[...]} →
@@ -31,6 +35,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PROFILE = json.loads((ROOT / "profile" / "profile.json").read_text(encoding="utf-8"))
 PJSON = json.dumps(PROFILE, ensure_ascii=False)
+
+# Список Telegram-каналов — из единого источника (src/sources.DEFAULT_TG_CHANNELS).
+sys.path.insert(0, str(ROOT / "src"))
+try:
+    from sources import DEFAULT_TG_CHANNELS as TG_CHANNELS  # noqa: E402
+except Exception:  # noqa: BLE001 — фолбэк, если импорт недоступен
+    TG_CHANNELS = ["vacanciesrus", "finexecutive", "theypaywell", "marketing_jobs",
+                   "perezvonyu", "prwork", "morejobs"]
 
 N8N_URL = os.environ.get("N8N_URL", "https://solarn8n.pro").rstrip("/")
 N8N_KEY = os.environ.get("N8N_KEY", "")
@@ -273,6 +285,75 @@ return rows.map(v=>{ let b=v.score+'/100 · '+v.name+'\n';
 '''
 
 
+# Telegram-каналы: публичная витрина t.me/s/<канал> (логика src/webchan.py на JS) →
+# отбор «похоже на вакансию» → скоринг → дедуп. Список каналов подставляется как JSON-массив.
+CHAN_FETCH_GLUE = r'''
+const CHANNELS=__CHANNELS__;
+const UA='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36';
+const VAC=['ваканс','ищем','ищу','требуется','в команду','зарплат','оклад','доход','вилка','з/п','зп ','hiring','ищется','открыт набор','позиц','релокац','remote','удалённо','удаленно','оффер'];
+const ROLE=['директор','руководител','head','cmo','cco','cpo','vp','вице-президент','chief','лид','lead','глава'];
+function looksVac(t){ const tl=t.toLowerCase(); if(tl.length<120) return false;
+  return VAC.some(w=>tl.indexOf(w)!==-1) && ROLE.some(w=>tl.indexOf(w)!==-1); }
+function parsePosts(html){ const out=[]; const parts=String(html).split('data-post="');
+  for(let i=1;i<parts.length;i++){ const ch=parts[i]; const mid=ch.split('"')[0];
+    const m=ch.match(/tgme_widget_message_text[^>]*>([\s\S]*?)<\/div>/);
+    let text=''; if(m){ text=m[1].replace(/<br\s*\/?>/g,'\n').replace(/<[^>]+>/g,' ').replace(/&[a-z]+;/g,' ').replace(/[ \t]+/g,' ').trim(); }
+    const dm=ch.match(/datetime="([^"]+)"/);
+    if(text) out.push({id:mid, text, url:'https://t.me/'+mid, date:dm?dm[1]:''}); }
+  return out; }
+const store=$getWorkflowStaticData('global');
+const sent=new Set(store.sent_ids||[]); const applied=new Set(store.applied_ids||[]);
+const uniq=new Set(); const rel=[];
+for(const c of CHANNELS){
+  let html=''; try{ html=await this.helpers.httpRequest({url:'https://t.me/s/'+c,
+    headers:{'User-Agent':UA,'Accept-Language':'ru,en'}}); }catch(e){ continue; }
+  for(const p of parsePosts(html)){
+    if(!looksVac(p.text)) continue;
+    const id='tg-'+p.id.replace(/\//g,'-');
+    if(uniq.has(id)||sent.has(id)||applied.has(id)) continue; uniq.add(id);
+    const title=((p.text.split('\n')[0]||p.text)).slice(0,120).trim();
+    const r=scoreVac(title, p.text, null);
+    if(r.score<PROFILE.thresholds.skip_below) continue;
+    rel.push({id, source:'tg', name:title, company:'@'+c, area:'', salary:null,
+      url:p.url, published:p.date, description:p.text.slice(0,3000),
+      score:r.score, best_role:r.best_role, matched:r.matched}); }
+}
+rel.sort((a,b)=>b.score-a.score);
+const fresh=rel.slice(0,10);
+for(const v of fresh) sent.add(v.id);
+store.sent_ids=Array.from(sent).slice(-8000);
+return fresh.map(v=>({json:v}));
+'''
+
+CHAN_BUILD_GLUE = r'''
+const items=$('tg: сбор+скоринг').all();
+let llms=[]; try{ llms=$('tg: LLM').all(); }catch(e){}
+function parseJudge(txt){ if(!txt) return null; const s=String(txt); const a=s.indexOf('{'), b=s.lastIndexOf('}'); if(a<0||b<0||b<a) return null; try{ return JSON.parse(s.slice(a,b+1)); }catch(e){ return null; } }
+const MIN=PROFILE.thresholds.digest;
+const rows=[];
+for(let i=0;i<items.length;i++){ const v=items[i].json||{};
+  let raw=''; try{ const lj=(llms[i]&&llms[i].json)||{}; raw=(lj.message&&lj.message.content)||lj.text||lj.content||''; }catch(e){}
+  const j=parseJudge(raw);
+  const score=(j&&isFinite(+j.fit_score))?Math.round(+j.fit_score):(v.score||0);
+  const why=(j&&j.why)?strip(j.why):'';
+  const gaps=(j&&Array.isArray(j.gaps))?j.gaps.slice(0,2):[];
+  const level=(j&&j.level_match)?String(j.level_match):'';
+  if(score<MIN) continue;
+  rows.push(Object.assign({}, v, {score, why, gaps, level}));
+}
+rows.sort((a,b)=>b.score-a.score);
+if(rows.length===0) return [];
+return rows.map(v=>{ let b=v.score+'/100 · '+v.name+'\n';
+  b+='📣 '+(v.company||'Telegram')+' · 💰 '+fmtSal(v.salary)+'\n';
+  if(v.why) b+='💡 '+v.why.slice(0,240)+'\n'; else b+='🎯 '+(v.best_role||'')+'\n';
+  if(v.gaps&&v.gaps.length) b+='⚠️ '+v.gaps.join('; ').slice(0,200)+'\n';
+  if(v.level&&v.level!=='в уровень') b+='📊 '+v.level+'\n';
+  b+='🔗 '+(v.url||'');
+  return { json: { text:b, url:v.url||'', id:v.id||'' } };
+});
+'''
+
+
 # Вебхук приёма истории откликов от бота (у бота личный токен HH). Кладёт hh-id в staticData,
 # откуда их читает score+dedup. Опц. общий секрет N8N_APPLIED_TOKEN (заголовок X-Findwork-Token).
 APPLIED_SYNC_JS = r'''
@@ -389,6 +470,28 @@ def build():
                     [780, 560], creds={"telegramApi": TELEGRAM_CRED},
                     extra={"retryOnFail": True, "maxTries": 3, "waitBetweenTries": 2000})
 
+    # --- независимая ветка Telegram-каналов (t.me/s/<канал>) ---
+    n_chan = node("tg: сбор+скоринг", "n8n-nodes-base.code", 2,
+                  {"jsCode": (SCORE_FUNCS + CHAN_FETCH_GLUE).replace("__PROFILE__", PJSON)
+                   .replace("__CHANNELS__", json.dumps(TG_CHANNELS, ensure_ascii=False))},
+                  [-20, 900], extra=cont)
+    n_chan_llm = node("tg: LLM", "@n8n/n8n-nodes-langchain.openAi", 1.8,
+                      {"modelId": {"__rl": True, "value": "gpt-4o", "mode": "list",
+                                   "cachedResultName": "GPT-4O"},
+                       "messages": {"values": [{"content": LLM_PROMPT}]}, "options": {}},
+                      [380, 900], creds={"openAiApi": OPENAI_CRED}, extra=cont)
+    n_chan_build = node("tg: дайджест", "n8n-nodes-base.code", 2,
+                        {"jsCode": (SCORE_FUNCS + CHAN_BUILD_GLUE).replace("__PROFILE__", PJSON)}, [580, 900])
+    n_chan_tg = node("Telegram tg-каналы", "n8n-nodes-base.telegram", 1.2,
+                     {"chatId": "=" + CHAT_ID, "text": "={{ $json.text }}",
+                      "additionalFields": {"appendAttribution": False},
+                      "replyMarkup": "inlineKeyboard",
+                      "inlineKeyboard": {"rows": [{"row": {"buttons": [
+                          {"text": "👍", "additionalFields": {"callback_data": "=up:{{ $json.id }}"}},
+                          {"text": "👎", "additionalFields": {"callback_data": "=dn:{{ $json.id }}"}}]}}]}},
+                     [780, 900], creds={"telegramApi": TELEGRAM_CRED},
+                     extra={"retryOnFail": True, "maxTries": 3, "waitBetweenTries": 2000})
+
     # Вебхук приёма откликов от бота → staticData (отдельный триггер, та же staticData воркфлоу).
     n_sync_wh = node("Webhook: applied", "n8n-nodes-base.webhook", 2,
                      {"httpMethod": "POST", "path": "findwork-applied", "responseMode": "lastNode",
@@ -401,6 +504,7 @@ def build():
     nodes = [n_manual, n_sched, n_today, n_mint, n_pick, n_apps, n_hh1, n_hh2, n_merge,
              n_list, n_getvac, n_llm, n_build, n_tg,
              n_fac, n_fac_llm, n_fac_build, n_fac_tg,
+             n_chan, n_chan_llm, n_chan_build, n_chan_tg,
              n_sync_wh, n_sync_code]
     connections = {}
 
@@ -441,6 +545,11 @@ def build():
     add(n_fac, n_fac_llm)
     add(n_fac_llm, n_fac_build)
     add(n_fac_build, n_fac_tg)
+    # ветка Telegram-каналов (параллельно HH/facancy)
+    add(n_today, n_chan)
+    add(n_chan, n_chan_llm)
+    add(n_chan_llm, n_chan_build)
+    add(n_chan_build, n_chan_tg)
     # ветка приёма откликов от бота (независимый триггер)
     add(n_sync_wh, n_sync_code)
 
