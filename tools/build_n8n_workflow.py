@@ -629,6 +629,12 @@ def main():
         else:
             out = _api("/workflows", "POST", wf); wf_id = out.get("id"); print("СОЗДАН:", wf_id)
         if os.environ.get("N8N_ACTIVATE") == "1":
+            # Перерегистрация вебхуков: после PUT в уже активный воркфлоу n8n НЕ поднимает
+            # новые вебхук-ноды (вебхук отвечает 404). Деактивируем и активируем заново.
+            try:
+                _api(f"/workflows/{wf_id}/deactivate", "POST")
+            except urllib.error.HTTPError:
+                pass
             print("АКТИВИРОВАН:", _api(f"/workflows/{wf_id}/activate", "POST").get("active"))
         print(f"открой: {N8N_URL}/workflow/{wf_id}")
     except urllib.error.HTTPError as e:
