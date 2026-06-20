@@ -9,7 +9,27 @@ cd "$(dirname "$0")/.."
 
 ENV_FILE=".env"
 [ -f "$ENV_FILE" ] || { echo "❌ нет $ENV_FILE (см. .env.example)"; exit 1; }
-set -a; . "$ENV_FILE"; set +a            # подгружаем секреты из .env в окружение
+
+# Безопасная загрузка .env: НЕ через `source` (он исполняет значения как bash — а там есть
+# скобки/пробелы, напр. HH_USER_AGENT=findwork/1.0 (sunpavel@gmail.com)). Парсим построчно
+# и экспортируем литералы.
+load_env() {
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%$'\r'}"                      # CRLF → убрать \r
+    case "$line" in ''|\#*) continue ;; esac  # пустые и комментарии
+    case "$line" in *=*) ;; *) continue ;; esac
+    key="${line%%=*}"; val="${line#*=}"
+    key="${key#export }"                       # терпим 'export KEY=...'
+    key="$(printf '%s' "$key" | tr -d '[:space:]')"
+    [ -z "$key" ] && continue
+    case "$val" in                             # снять обрамляющие кавычки, если есть
+      \"*\") val="${val#\"}"; val="${val%\"}" ;;
+      \'*\') val="${val#\'}"; val="${val%\'}" ;;
+    esac
+    export "$key=$val"
+  done < "$ENV_FILE"
+}
+load_env
 
 PY=".venv/bin/python"; [ -x "$PY" ] || PY="python3"
 : "${N8N_URL:=https://solarn8n.pro}"
