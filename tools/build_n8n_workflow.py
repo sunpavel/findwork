@@ -27,6 +27,7 @@ staticData (score+dedup исключает их). Опц. секрет N8N_APPLI
 """
 import json
 import os
+import re
 import sys
 import urllib.request
 import uuid
@@ -578,11 +579,50 @@ def _find_wf_id_by_name(name):
     return None
 
 
+WF_NAME = "hh.ru — findwork (скоринг)"
+
+
+def _existing_hh_creds(wf_id):
+    """HH client_id/secret (и сид-токен) из узлов уже существующего воркфлоу — чтобы не
+    вводить их заново при каждом перевыпуске. {} — если воркфлоу/узлов нет."""
+    out = {}
+    if not wf_id:
+        return out
+    try:
+        wf = _api(f"/workflows/{wf_id}")
+    except Exception:  # noqa: BLE001
+        return out
+    for n in wf.get("nodes", []) or []:
+        params = n.get("parameters") or {}
+        if n.get("name") == "HH token":
+            for p in ((params.get("bodyParameters") or {}).get("parameters") or []):
+                if p.get("name") in ("client_id", "client_secret") and p.get("value"):
+                    out[p["name"]] = p["value"]
+        elif n.get("name") == "HH token (cache)":
+            m = re.search(r"store\.hh_token\s*\|\|\s*'([^']+)'", params.get("jsCode", ""))
+            if m:
+                out["seed"] = m.group(1)
+    return out
+
+
 def main():
     if not N8N_KEY:
-        sys.exit("Задай N8N_KEY.")
+        sys.exit("Задай N8N_KEY (n8n → Settings → n8n API).")
+    global HH_CLIENT_ID, HH_CLIENT_SECRET, HH_SEED_TOKEN
+    wf_id = os.environ.get("N8N_WF_ID") or _find_wf_id_by_name(WF_NAME)
+    # HH-креды нужны при сборке (вшиваются в узел минта). Если их нет в env — берём из
+    # существующего воркфлоу, чтобы не перевыпускать его с пустыми ключами.
+    if not (HH_CLIENT_ID and HH_CLIENT_SECRET):
+        creds = _existing_hh_creds(wf_id)
+        HH_CLIENT_ID = HH_CLIENT_ID or creds.get("client_id", "")
+        HH_CLIENT_SECRET = HH_CLIENT_SECRET or creds.get("client_secret", "")
+        HH_SEED_TOKEN = HH_SEED_TOKEN or creds.get("seed", "")
+        if HH_CLIENT_ID and HH_CLIENT_SECRET:
+            print("HH-креды взяты из текущего воркфлоу (в .env не заданы)")
+    if not (HH_CLIENT_ID and HH_CLIENT_SECRET):
+        sys.exit("Нет HH_CLIENT_ID/HH_CLIENT_SECRET ни в .env, ни в текущем воркфлоу — "
+                 "не перевыпускаю (иначе HH-поиск сломается). Добавь их в .env (dev.hh.ru/admin).")
     wf = build()
-    wf_id = os.environ.get("N8N_WF_ID") or _find_wf_id_by_name(wf["name"])
     try:
         if wf_id:
             out = _api(f"/workflows/{wf_id}", "PUT", wf); print("ОБНОВЛЁН:", out.get("id"))

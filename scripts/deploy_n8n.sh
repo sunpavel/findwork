@@ -35,15 +35,12 @@ PY=".venv/bin/python"; [ -x "$PY" ] || PY="python3"
 : "${N8N_URL:=https://solarn8n.pro}"
 export N8N_URL
 
-miss=()
-[ -n "${N8N_KEY:-}" ]        || miss+=("N8N_KEY")
-[ -n "${HH_CLIENT_ID:-}" ]    || miss+=("HH_CLIENT_ID")
-[ -n "${HH_CLIENT_SECRET:-}" ] || miss+=("HH_CLIENT_SECRET")
-if [ "${#miss[@]}" -gt 0 ]; then
-  echo "❌ в .env не хватает: ${miss[*]}"
-  echo "   добавь их в .env (см. .env.example) и повтори."
+if [ -z "${N8N_KEY:-}" ]; then
+  echo "❌ в .env нет N8N_KEY (n8n → Settings → n8n API → Create). Добавь и повтори."
   exit 1
 fi
+# HH_CLIENT_ID/SECRET при отсутствии в .env подтянутся из текущего воркфлоу (build сам это сделает).
+[ -n "${HH_CLIENT_ID:-}" ] || echo "ℹ️  HH_CLIENT_ID не в .env — возьму из текущего воркфлоу в n8n."
 
 echo "==> n8n: $N8N_URL · WF id: ${N8N_WF_ID:-авто по имени} · активация: ${N8N_ACTIVATE:-1}"
 N8N_ACTIVATE="${N8N_ACTIVATE:-1}" "$PY" tools/build_n8n_workflow.py
