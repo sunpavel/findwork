@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="1480" viewBox="0 0 1240 1480">
+<defs><marker id="a" markerWidth="11" markerHeight="11" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,3 L0,6 Z" fill="#475569"/></marker></defs>
+<rect x="0" y="0" width="1240" height="1480" rx="0" fill="#f7f9fc" stroke="#f7f9fc" stroke-width="0"/>
+<text x="620.0" y="46" font-family="Segoe UI, Arial, sans-serif" font-size="26" font-weight="800" fill="#1f2937" text-anchor="middle">findwork — воркфлоу генерации отклика</text>
+<text x="620.0" y="74" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="normal" fill="#6b7280" text-anchor="middle">ссылка на вакансию  →  экспертный анализ  →  адаптированное резюме + письмо (PDF/DOCX)</text>
+<rect x="340.0" y="100" width="560" height="56" rx="12" fill="#cfe2ff" stroke="#0d6efd" stroke-width="2"/>
+<text x="620.0" y="133.0" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="700" fill="#1f2937" text-anchor="middle">Павел шлёт боту ссылку на вакансию (Telegram)</text>
+<line x1="620.0" y1="156" x2="620.0" y2="184" stroke="#475569" stroke-width="2.5" marker-end="url(#a)"/>
+<rect x="340.0" y="184" width="560" height="64" rx="12" fill="#ffffff" stroke="#9aa5b1" stroke-width="2"/>
+<text x="620.0" y="211.0" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="700" fill="#1f2937" text-anchor="middle">webvac.fetch_vacancy(url) — парсит страницу</text>
+<text x="620.0" y="230.0" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="normal" fill="#1f2937" text-anchor="middle">· название · компания · город · описание · ключевые навыки</text>
+<line x1="620.0" y1="248" x2="620.0" y2="280" stroke="#475569" stroke-width="2.5" marker-end="url(#a)"/>
+<rect x="60" y="300" width="250" height="150" rx="12" fill="#ede7ff" stroke="#6f42c1" stroke-width="2"/>
+<text x="76" y="328.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="700" fill="#1f2937" text-anchor="start">resume/master_cco.md</text>
+<text x="76" y="345.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="normal" fill="#1f2937" text-anchor="start">ЕДИНСТВЕННЫЙ источник</text>
+<text x="76" y="362.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="normal" fill="#1f2937" text-anchor="start">фактов о кандидате.</text>
+<text x="76" y="379.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="normal" fill="#1f2937" text-anchor="start"></text>
+<text x="76" y="396.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="normal" fill="#1f2937" text-anchor="start">Спорные факты помечены *</text>
+<text x="76" y="413.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="normal" fill="#1f2937" text-anchor="start">Ранний опыт (до 2011):</text>
+<text x="76" y="430.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="normal" fill="#1f2937" text-anchor="start">только если релевантно.</text>
+<rect x="310.0" y="290" width="620" height="760" rx="16" fill="#ffffff" stroke="#0d6efd" stroke-width="2.5" stroke-dasharray="7 5"/>
+<text x="330.0" y="316" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="800" fill="#0d6efd" text-anchor="start">career_agent.prepare_application — двухагентный экспертный цикл</text>
+<line x1="310" y1="375.0" x2="310.0" y2="375.0" stroke="#6f42c1" stroke-width="2.5" marker-end="url(#a)"/>
+<rect x="340.0" y="340" width="560" height="150" rx="12" fill="#cfe2ff" stroke="#0d6efd" stroke-width="2"/>
+<text x="356.0" y="374.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="700" fill="#1f2937" text-anchor="start">① АГЕНТ-СТРАТЕГ  (writer: ChatGPT через n8n / OpenAI / Claude)</text>
+<text x="356.0" y="392.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="normal" fill="#1f2937" text-anchor="start">Работает как карьерный эксперт, не копирайтер:</text>
+<text x="356.0" y="410.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="normal" fill="#1f2937" text-anchor="start">· анализ вакансии: реальная роль, бизнес-задача, уровень, must/nice, слова HR;</text>
+<text x="356.0" y="428.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="normal" fill="#1f2937" text-anchor="start">· карта соответствия: требование → факт / смежное / ПРОБЕЛ (с цифрой и компанией);</text>
+<text x="356.0" y="446.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="normal" fill="#1f2937" text-anchor="start">· адаптированное резюме (профиль, достижения, опыт) + сопроводительное (JSON).</text>
+<text x="356.0" y="464.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="normal" fill="#1f2937" text-anchor="start">ГЛАВНЫЙ ЗАКОН: только факты из мастера, без выдумок. Отстройка = акценты под вакансию.</text>
+<line x1="620.0" y1="490" x2="620.0" y2="520" stroke="#475569" stroke-width="2.5" marker-end="url(#a)"/>
+<rect x="340.0" y="520" width="560" height="132" rx="12" fill="#cfe2ff" stroke="#0d6efd" stroke-width="2"/>
+<text x="356.0" y="554.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="700" fill="#1f2937" text-anchor="start">② АГЕНТ-КРИТИК  (reviewer: Claude → фолбэк gpt-4.1)</text>
+<text x="356.0" y="572.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="normal" fill="#1f2937" text-anchor="start">Сверяет черновик с вакансией и мастером:</text>
+<text x="356.0" y="590.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="normal" fill="#1f2937" text-anchor="start">· фактичность (нет ли выдумок) · реалистичность атрибуции (личный вклад vs компания);</text>
+<text x="356.0" y="608.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="normal" fill="#1f2937" text-anchor="start">· релевантность вакансии · стиль/оформление письма · минимум 3 цифры из мастера.</text>
+<text x="356.0" y="626.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="normal" fill="#1f2937" text-anchor="start">Вердикт: pass | revise + конкретные правки.</text>
+<path d="M 340.0 550 H 270.0 V 415 H 340.0" fill="none" stroke="#dc3545" stroke-width="2.5" stroke-dasharray="6 4" marker-end="url(#a)"/>
+<text x="274.0" y="450.0" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="700" fill="#dc3545" text-anchor="start">revise:</text>
+<text x="274.0" y="464.0" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="700" fill="#dc3545" text-anchor="start">1 правка</text>
+<line x1="620.0" y1="652" x2="620.0" y2="682" stroke="#475569" stroke-width="2.5" marker-end="url(#a)"/>
+<rect x="340.0" y="682" width="560" height="150" rx="12" fill="#fff3cd" stroke="#e0a800" stroke-width="2"/>
+<text x="356.0" y="716.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="700" fill="#1f2937" text-anchor="start">③ QA-КОНТРОЛЬ  (verify.py — детерминированно, БЕЗ LLM)</text>
+<text x="356.0" y="734.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="normal" fill="#1f2937" text-anchor="start">· анти-галлюцинация: цифры/компании, которых нет в мастере;</text>
+<text x="356.0" y="752.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="normal" fill="#1f2937" text-anchor="start">· ATS-дотяжка: навыки из вакансии, подтверждённые мастером, но не отражённые;</text>
+<text x="356.0" y="770.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="normal" fill="#1f2937" text-anchor="start">· счётчик метрик в письме (цель ≥ 3).</text>
+<text x="356.0" y="788.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="normal" fill="#1f2937" text-anchor="start">Нашёл проблему → 1 точечный регЕн Стратега.</text>
+<text x="356.0" y="806.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="normal" fill="#1f2937" text-anchor="start">Что осталось неподтверждённым → ⚠️ warnings «проверь перед отправкой».</text>
+<path d="M 340.0 712 H 270.0 V 415 H 340.0" fill="none" stroke="#e0a800" stroke-width="2.5" stroke-dasharray="6 4" marker-end="url(#a)"/>
+<text x="274.0" y="676" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="700" fill="#b8860b" text-anchor="start">регЕн</text>
+<line x1="620.0" y1="1050" x2="620.0" y2="1080" stroke="#475569" stroke-width="2.5" marker-end="url(#a)"/>
+<rect x="340.0" y="1080" width="560" height="60" rx="12" fill="#d4edda" stroke="#28a745" stroke-width="2"/>
+<text x="620.0" y="1115.0" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="700" fill="#1f2937" text-anchor="middle">resume_doc.render_both — PDF + DOCX (шрифты, фото)</text>
+<line x1="620.0" y1="1140" x2="620.0" y2="1170" stroke="#475569" stroke-width="2.5" marker-end="url(#a)"/>
+<rect x="340.0" y="1170" width="560" height="132" rx="12" fill="#cfe2ff" stroke="#0d6efd" stroke-width="2"/>
+<text x="356.0" y="1200.5" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="700" fill="#1f2937" text-anchor="start">Бот присылает в Telegram:</text>
+<text x="356.0" y="1220.5" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="normal" fill="#1f2937" text-anchor="start">· роль + акценты под вакансию + % совпадения навыков + вердикт критика;</text>
+<text x="356.0" y="1240.5" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="normal" fill="#1f2937" text-anchor="start">· сопроводительное письмо;</text>
+<text x="356.0" y="1260.5" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="normal" fill="#1f2937" text-anchor="start">· warnings (факты на ручную сверку), если есть;</text>
+<text x="356.0" y="1280.5" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="normal" fill="#1f2937" text-anchor="start">· резюме PDF  +  DOCX.</text>
+<rect x="340.0" y="1320" width="560" height="48" rx="12" fill="#fde2e1" stroke="#dc3545" stroke-width="2"/>
+<text x="620.0" y="1348.0" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="700" fill="#1f2937" text-anchor="middle">Фолбэк: если LLM-пайплайн упал → tailor.tailor() (базовый шаблон), отклик не теряется</text>
+<rect x="40" y="1400" width="1160" height="70" rx="12" fill="#eef2f7" stroke="#cbd5e1" stroke-width="2"/>
+<text x="60" y="1426" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="800" fill="#475569" text-anchor="start">Легенда:</text>
+<rect x="150" y="1416" width="16" height="16" rx="4" fill="#cfe2ff" stroke="#0d6efd" stroke-width="1.5"/>
+<text x="172" y="1428" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="normal" fill="#475569" text-anchor="start">LLM / интерактив</text>
+<rect x="315.2" y="1416" width="16" height="16" rx="4" fill="#d4edda" stroke="#28a745" stroke-width="1.5"/>
+<text x="337.2" y="1428" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="normal" fill="#475569" text-anchor="start">готовый артефакт</text>
+<rect x="480.4" y="1416" width="16" height="16" rx="4" fill="#fff3cd" stroke="#e0a800" stroke-width="1.5"/>
+<text x="502.4" y="1428" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="normal" fill="#475569" text-anchor="start">детерминир. проверка</text>
+<rect x="674.4" y="1416" width="16" height="16" rx="4" fill="#ede7ff" stroke="#6f42c1" stroke-width="1.5"/>
+<text x="696.4" y="1428" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="normal" fill="#475569" text-anchor="start">источник фактов</text>
+<rect x="832.4" y="1416" width="16" height="16" rx="4" fill="#fde2e1" stroke="#dc3545" stroke-width="1.5"/>
+<text x="854.4" y="1428" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="normal" fill="#475569" text-anchor="start">страховка</text>
+<text x="60" y="1450" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="normal" fill="#6b7280" text-anchor="start">Второй вход: утренний дайджест (pipeline.py) — сбор вакансий → скоринг релевантности → топ в Telegram → та же генерация по ссылке.</text>
+</svg>
