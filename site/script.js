@@ -11,7 +11,7 @@
    * ----------------------------------------------------------- */
   var LEAD_WEBHOOK_URL = ""; // напр. "https://n8n.ваш-домен.ru/webhook/lead"
   var CONTACT_EMAIL = "sunpavel@gmail.com";
-  var TELEGRAM_USER = "skvortsov_adv";
+  var TELEGRAM_USER = "SkvortsovADV";
 
   document.addEventListener("DOMContentLoaded", function () {
     initYear();
