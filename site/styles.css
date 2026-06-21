@@ -278,3 +278,22 @@ main>section{animation:pageIn .5s ease both}
   .feature-grid,.svc-index-grid,.blog-grid{grid-template-columns:1fr}
   .page-hero{padding:36px 0 4px}
 }
+
+/* ============ Cookie bar / legal ============ */
+.footer-legal{display:flex;gap:18px;flex-wrap:wrap}
+.footer-legal a:hover{color:var(--accent)}
+.cookie-bar{position:fixed;left:16px;right:16px;bottom:16px;z-index:1200;max-width:780px;margin:0 auto;background:var(--surface-2);border:1px solid var(--border);border-radius:16px;padding:16px 20px;display:flex;gap:18px;align-items:center;justify-content:space-between;box-shadow:var(--shadow);flex-wrap:wrap;animation:cookieIn .4s ease both}
+@keyframes cookieIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+.cookie-bar p{font-size:13.5px;color:var(--muted);margin:0;flex:1 1 340px;line-height:1.55}
+.cookie-bar p a{color:var(--accent);text-decoration:underline}
+.cookie-bar .cookie-actions{display:flex;gap:10px;flex-shrink:0}
+@media (prefers-reduced-motion:reduce){.cookie-bar{animation:none}}
+@media (max-width:560px){.cookie-bar{left:10px;right:10px;bottom:10px;padding:14px 16px}.cookie-bar .cookie-actions{width:100%}.cookie-bar .cookie-actions .btn{width:100%}}
+.legal{max-width:800px;margin:0 auto}
+.legal h2{font-size:21px;font-weight:800;letter-spacing:-.01em;margin:30px 0 10px;color:var(--text)}
+.legal p,.legal li{color:var(--muted);font-size:15.5px;line-height:1.72}
+.legal p{margin-bottom:12px}
+.legal ul{padding-left:22px;margin:6px 0 14px}
+.legal li{margin-bottom:7px}
+.legal a{color:var(--accent);text-decoration:underline}
+.legal .updated{font-size:13px;color:#5b657c;margin-bottom:8px}

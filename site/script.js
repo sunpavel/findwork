@@ -17,7 +17,24 @@
     initYear();
     initMobileNav();
     initLeadForm();
+    initCookieBar();
   });
+
+  function initCookieBar() {
+    try { if (localStorage.getItem("cookie-consent") === "1") return; } catch (e) {}
+    var bar = document.createElement("div");
+    bar.className = "cookie-bar";
+    bar.setAttribute("role", "dialog");
+    bar.setAttribute("aria-label", "Уведомление об использовании файлов cookie");
+    bar.innerHTML =
+      '<p>Мы используем файлы cookie, чтобы сайт работал корректно и удобно. Продолжая пользоваться сайтом, вы соглашаетесь с <a href="/cookies/">Правилами использования cookie</a> и <a href="/privacy/">Политикой конфиденциальности</a>.</p>' +
+      '<div class="cookie-actions"><button class="btn btn-primary btn-sm" type="button">Принять</button></div>';
+    document.body.appendChild(bar);
+    bar.querySelector("button").addEventListener("click", function () {
+      try { localStorage.setItem("cookie-consent", "1"); } catch (e) {}
+      bar.remove();
+    });
+  }
 
   function initYear() {
     var y = document.getElementById("year");
