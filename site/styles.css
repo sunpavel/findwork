@@ -112,8 +112,11 @@ svg{display:block}
 .proc-step p{color:var(--muted);font-size:14.5px}
 
 /* ---------- Cases ---------- */
-.case-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:26px;transition:transform .2s,border-color .2s}
+.case-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:26px;transition:transform .2s,border-color .2s;overflow:hidden}
 .case-card:hover{transform:translateY(-4px);border-color:rgba(114,174,244,.4)}
+.case-cover{margin:-26px -26px 20px;height:172px;overflow:hidden;border-bottom:1px solid var(--border);background:var(--surface-2)}
+.case-cover img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .4s ease}
+.case-card:hover .case-cover img{transform:scale(1.04)}
 .case-top{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:16px}
 .case-head h3{font-size:18px}
 .case-period{display:inline-block;margin-top:6px;font-size:12px;color:var(--muted);background:var(--surface-2);border:1px solid var(--border);padding:3px 9px;border-radius:999px}
@@ -132,6 +135,7 @@ svg{display:block}
 .about-side{display:flex;flex-direction:column;gap:22px}
 .avatar{position:relative;width:100%;max-width:280px;margin:0 auto}
 .avatar svg{width:100%;height:auto;border-radius:28px}
+.avatar img{width:100%;height:auto;display:block;border-radius:24px;border:1px solid var(--border)}
 .avatar-badge{position:absolute;right:6px;bottom:6px;background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#06182B;font-weight:800;font-size:13px;padding:8px 14px;border-radius:999px;box-shadow:var(--shadow)}
 .about-quick{display:grid;gap:12px}
 .about-quick>div{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px}
