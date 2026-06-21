@@ -28,6 +28,8 @@
 
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="apple-touch-icon" href="favicon.svg" />
+  <link rel="preload" href="fonts.css" as="style" />
+  <link rel="stylesheet" href="fonts.css" />
   <link rel="preload" href="styles.css" as="style" />
   <link rel="stylesheet" href="styles.css" />
 
@@ -52,9 +54,7 @@
   <header class="site-header" id="top">
     <div class="container header-inner">
       <a class="brand" href="#top" aria-label="Skvortsov ADV — на главную">
-        <span class="brand-mark" aria-hidden="true">
-          <svg viewBox="0 0 32 32" width="32" height="32"><defs><linearGradient id="bm" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#34D399"/><stop offset="1" stop-color="#10B981"/></linearGradient></defs><rect width="32" height="32" rx="9" fill="url(#bm)"/><path d="M21 12.2c-1-1.2-2.5-1.9-4.2-1.9-2.8 0-4.8 1.6-4.8 3.8 0 2 1.4 3 4 3.6l1.4.35c1.5.35 2.1.75 2.1 1.5 0 .9-.9 1.5-2.35 1.5-1.5 0-2.6-.6-3.4-1.7l-2.35 1.65c1.15 1.65 3 2.6 5.6 2.6 3.1 0 5.25-1.55 5.25-3.95 0-2.1-1.4-3.15-4.2-3.8l-1.4-.3c-1.35-.3-1.9-.7-1.9-1.4 0-.85.8-1.4 2.1-1.4 1.3 0 2.3.5 3 1.45z" fill="#04130C"/></svg>
-        </span>
+        <img class="brand-mark" src="logo.svg" width="38" height="34" alt="" aria-hidden="true" />
         <span class="brand-text">Skvortsov<strong>ADV</strong></span>
       </a>
       <nav class="nav" aria-label="Основная навигация">
@@ -100,10 +100,10 @@
         <div class="hero-visual" aria-hidden="true">
           <svg viewBox="0 0 520 460" class="dash" role="img">
             <defs>
-              <linearGradient id="barG" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#10B981" stop-opacity=".25"/><stop offset="1" stop-color="#34D399"/></linearGradient>
-              <linearGradient id="lineG" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#34D399"/><stop offset="1" stop-color="#6EE7F0"/></linearGradient>
-              <linearGradient id="areaG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#34D399" stop-opacity=".35"/><stop offset="1" stop-color="#34D399" stop-opacity="0"/></linearGradient>
-              <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#34D399"/><stop offset="1" stop-color="#10B981"/></linearGradient>
+              <linearGradient id="barG" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#3D8BE0" stop-opacity=".25"/><stop offset="1" stop-color="#72AEF4"/></linearGradient>
+              <linearGradient id="lineG" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#72AEF4"/><stop offset="1" stop-color="#8AEBFB"/></linearGradient>
+              <linearGradient id="areaG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#72AEF4" stop-opacity=".35"/><stop offset="1" stop-color="#72AEF4" stop-opacity="0"/></linearGradient>
+              <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#72AEF4"/><stop offset="1" stop-color="#3D8BE0"/></linearGradient>
               <filter id="soft" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="6"/></filter>
             </defs>
 
@@ -111,8 +111,8 @@
             <rect x="20" y="40" width="480" height="300" rx="20" fill="#121826" stroke="#27314a"/>
             <text x="44" y="78" fill="#E7EBF3" font-family="Arial" font-size="16" font-weight="700">Рост выручки</text>
             <text x="44" y="98" fill="#7E8AA3" font-family="Arial" font-size="12">по каналам · 12 мес</text>
-            <rect x="396" y="60" width="84" height="26" rx="13" fill="#10331f"/>
-            <text x="438" y="77" fill="#34D399" font-family="Arial" font-size="12" font-weight="700" text-anchor="middle">▲ +212%</text>
+            <rect x="396" y="60" width="84" height="26" rx="13" fill="#0c2740"/>
+            <text x="438" y="77" fill="#72AEF4" font-family="Arial" font-size="12" font-weight="700" text-anchor="middle">▲ +212%</text>
 
             <!-- gridlines -->
             <g stroke="#222b40" stroke-width="1">
@@ -135,15 +135,15 @@
             <!-- trend line + area -->
             <path d="M70 250 L150 222 L230 196 L310 168 L390 122 L460 92 L460 300 L70 300 Z" fill="url(#areaG)"/>
             <path d="M70 250 L150 222 L230 196 L310 168 L390 122 L460 92" fill="none" stroke="url(#lineG)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
-            <circle cx="460" cy="92" r="9" fill="#34D399" filter="url(#soft)"/>
-            <circle cx="460" cy="92" r="5.5" fill="#04130C" stroke="#34D399" stroke-width="2.5"/>
+            <circle cx="460" cy="92" r="9" fill="#72AEF4" filter="url(#soft)"/>
+            <circle cx="460" cy="92" r="5.5" fill="#06182B" stroke="#72AEF4" stroke-width="2.5"/>
 
             <!-- floating KPI card: ROI donut -->
             <g transform="translate(300,300)">
               <rect x="0" y="0" width="190" height="120" rx="16" fill="#161d2e" stroke="#2b3650"/>
               <text x="18" y="30" fill="#9AA6BC" font-family="Arial" font-size="12">ROI кампаний</text>
               <text x="18" y="66" fill="#E7EBF3" font-family="Arial" font-size="30" font-weight="800">3.2x</text>
-              <text x="18" y="92" fill="#34D399" font-family="Arial" font-size="12" font-weight="700">▲ выше плана</text>
+              <text x="18" y="92" fill="#72AEF4" font-family="Arial" font-size="12" font-weight="700">▲ выше плана</text>
               <circle cx="150" cy="62" r="30" fill="none" stroke="#26304a" stroke-width="9"/>
               <circle cx="150" cy="62" r="30" fill="none" stroke="url(#ring)" stroke-width="9" stroke-linecap="round" stroke-dasharray="150 188" transform="rotate(-90 150 62)"/>
               <text x="150" y="67" fill="#E7EBF3" font-family="Arial" font-size="14" font-weight="700" text-anchor="middle">80%</text>
@@ -154,10 +154,10 @@
               <rect x="0" y="0" width="170" height="120" rx="16" fill="#161d2e" stroke="#2b3650"/>
               <text x="18" y="30" fill="#9AA6BC" font-family="Arial" font-size="12">Лиды / мес</text>
               <text x="18" y="66" fill="#E7EBF3" font-family="Arial" font-size="30" font-weight="800">+200%</text>
-              <g stroke="#34D399" stroke-width="2.5" fill="none" stroke-linecap="round">
+              <g stroke="#72AEF4" stroke-width="2.5" fill="none" stroke-linecap="round">
                 <path d="M18 100 L42 92 L66 96 L90 80 L114 84 L138 66 L152 60"/>
               </g>
-              <circle cx="152" cy="60" r="3.5" fill="#34D399"/>
+              <circle cx="152" cy="60" r="3.5" fill="#72AEF4"/>
             </g>
           </svg>
         </div>
@@ -322,7 +322,7 @@
           <article class="case-card">
             <div class="case-top">
               <div class="case-head"><h3>Termoland · ЦФА</h3><span class="case-period">13 мес</span></div>
-              <svg class="case-spark" viewBox="0 0 120 40" aria-hidden="true"><polyline points="2,36 24,30 46,26 68,16 90,9 118,3" fill="none" stroke="#34D399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="118" cy="3" r="3" fill="#34D399"/></svg>
+              <svg class="case-spark" viewBox="0 0 120 40" aria-hidden="true"><polyline points="2,36 24,30 46,26 68,16 90,9 118,3" fill="none" stroke="#72AEF4" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="118" cy="3" r="3" fill="#72AEF4"/></svg>
             </div>
             <ul class="case-metrics"><li><strong>2.65 млрд ₽</strong><span>привлечено</span></li><li><strong>5</strong><span>выпусков ЦФА</span></li><li><strong>7 мин</strong><span>последний сбор</span></li></ul>
             <p>5 успешных выпусков ЦФА совместно с Альфа-Банком. От 4 дней до 7 минут на полный сбор средств.</p>
@@ -332,7 +332,7 @@
           <article class="case-card">
             <div class="case-top">
               <div class="case-head"><h3>Pragmacore · IT-стартап</h3><span class="case-period">18 мес</span></div>
-              <svg class="case-spark" viewBox="0 0 120 40" aria-hidden="true"><g fill="#34D399"><rect x="6" y="28" width="12" height="10" rx="2" opacity=".5"/><rect x="30" y="22" width="12" height="16" rx="2" opacity=".65"/><rect x="54" y="16" width="12" height="22" rx="2" opacity=".8"/><rect x="78" y="9" width="12" height="29" rx="2"/><rect x="102" y="3" width="12" height="35" rx="2"/></g></svg>
+              <svg class="case-spark" viewBox="0 0 120 40" aria-hidden="true"><g fill="#72AEF4"><rect x="6" y="28" width="12" height="10" rx="2" opacity=".5"/><rect x="30" y="22" width="12" height="16" rx="2" opacity=".65"/><rect x="54" y="16" width="12" height="22" rx="2" opacity=".8"/><rect x="78" y="9" width="12" height="29" rx="2"/><rect x="102" y="3" width="12" height="35" rx="2"/></g></svg>
             </div>
             <ul class="case-metrics"><li><strong>150 млн ₽</strong><span>выручка за год</span></li><li><strong>×5</strong><span>рост продаж</span></li><li><strong>85%</strong><span>ROI медиа</span></li></ul>
             <p>Запуск IT-стартапа с нуля. Выручка 150 млн рублей за первый год. Полный цикл до sales-воронки.</p>
@@ -342,7 +342,7 @@
           <article class="case-card">
             <div class="case-top">
               <div class="case-head"><h3>Space 1 · Недвижимость</h3><span class="case-period">8 мес</span></div>
-              <svg class="case-spark" viewBox="0 0 120 40" aria-hidden="true"><polyline points="2,34 26,30 50,20 74,18 98,8 118,4" fill="none" stroke="#34D399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="118" cy="4" r="3" fill="#34D399"/></svg>
+              <svg class="case-spark" viewBox="0 0 120 40" aria-hidden="true"><polyline points="2,34 26,30 50,20 74,18 98,8 118,4" fill="none" stroke="#72AEF4" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="118" cy="4" r="3" fill="#72AEF4"/></svg>
             </div>
             <ul class="case-metrics"><li><strong>200%</strong><span>рост лидов</span></li><li><strong>45%</strong><span>конверсия</span></li><li><strong>3.2x</strong><span>ROI</span></li></ul>
             <p>Маркетинг офисных помещений премиум-класса. Заполняемость объектов +85% за 8 месяцев.</p>
@@ -352,7 +352,7 @@
           <article class="case-card">
             <div class="case-top">
               <div class="case-head"><h3>Asterus · Девелопер</h3><span class="case-period">6 мес</span></div>
-              <svg class="case-spark" viewBox="0 0 120 40" aria-hidden="true"><g fill="#34D399"><rect x="6" y="26" width="12" height="12" rx="2" opacity=".5"/><rect x="30" y="20" width="12" height="18" rx="2" opacity=".65"/><rect x="54" y="14" width="12" height="24" rx="2" opacity=".8"/><rect x="78" y="8" width="12" height="30" rx="2"/><rect x="102" y="4" width="12" height="34" rx="2"/></g></svg>
+              <svg class="case-spark" viewBox="0 0 120 40" aria-hidden="true"><g fill="#72AEF4"><rect x="6" y="26" width="12" height="12" rx="2" opacity=".5"/><rect x="30" y="20" width="12" height="18" rx="2" opacity=".65"/><rect x="54" y="14" width="12" height="24" rx="2" opacity=".8"/><rect x="78" y="8" width="12" height="30" rx="2"/><rect x="102" y="4" width="12" height="34" rx="2"/></g></svg>
             </div>
             <ul class="case-metrics"><li><strong>+8</strong><span>районов</span></li><li><strong>+40</strong><span>участников</span></li><li><strong>100%</strong><span>заполнение</span></li></ul>
             <p>Упаковка нового девелопера и продвижение ЖК ALIA. От создания бренда до запуска продаж.</p>
@@ -362,7 +362,7 @@
           <article class="case-card">
             <div class="case-top">
               <div class="case-head"><h3>Zolla · Fashion-ритейл</h3><span class="case-period">14 мес</span></div>
-              <svg class="case-spark" viewBox="0 0 120 40" aria-hidden="true"><polyline points="2,32 26,28 50,24 74,14 98,12 118,4" fill="none" stroke="#34D399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="118" cy="4" r="3" fill="#34D399"/></svg>
+              <svg class="case-spark" viewBox="0 0 120 40" aria-hidden="true"><polyline points="2,32 26,28 50,24 74,14 98,12 118,4" fill="none" stroke="#72AEF4" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="118" cy="4" r="3" fill="#72AEF4"/></svg>
             </div>
             <ul class="case-metrics"><li><strong>+40%</strong><span>online-продажи</span></li><li><strong>×2.5</strong><span>ROAS</span></li><li><strong>65%</strong><span>retention</span></li></ul>
             <p>Комплексный performance-маркетинг для fashion-бренда. Рост онлайн-продаж +40% при ROAS ×2.5.</p>
@@ -384,7 +384,7 @@
         <div class="about-side">
           <div class="avatar" aria-hidden="true">
             <svg viewBox="0 0 200 200">
-              <defs><linearGradient id="av" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#34D399"/><stop offset="1" stop-color="#0E7C5A"/></linearGradient></defs>
+              <defs><linearGradient id="av" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#72AEF4"/><stop offset="1" stop-color="#2f6fd6"/></linearGradient></defs>
               <rect width="200" height="200" rx="28" fill="#121826"/>
               <circle cx="100" cy="100" r="78" fill="none" stroke="url(#av)" stroke-width="3" stroke-dasharray="6 8" opacity=".6"/>
               <circle cx="100" cy="84" r="30" fill="url(#av)"/>
@@ -479,7 +479,7 @@
   <footer class="site-footer">
     <div class="container footer-inner">
       <div class="footer-brand">
-        <a class="brand" href="#top"><span class="brand-mark"><svg viewBox="0 0 32 32" width="32" height="32"><rect width="32" height="32" rx="9" fill="url(#bm)"/><path d="M21 12.2c-1-1.2-2.5-1.9-4.2-1.9-2.8 0-4.8 1.6-4.8 3.8 0 2 1.4 3 4 3.6l1.4.35c1.5.35 2.1.75 2.1 1.5 0 .9-.9 1.5-2.35 1.5-1.5 0-2.6-.6-3.4-1.7l-2.35 1.65c1.15 1.65 3 2.6 5.6 2.6 3.1 0 5.25-1.55 5.25-3.95 0-2.1-1.4-3.15-4.2-3.8l-1.4-.3c-1.35-.3-1.9-.7-1.9-1.4 0-.85.8-1.4 2.1-1.4 1.3 0 2.3.5 3 1.45z" fill="#04130C"/></svg></span><span class="brand-text">Skvortsov<strong>ADV</strong></span></a>
+        <a class="brand" href="#top"><img class="brand-mark" src="logo.svg" width="38" height="34" alt="" aria-hidden="true" /><span class="brand-text">Skvortsov<strong>ADV</strong></span></a>
         <p class="footer-tagline">Агентство роста, которое строит маркетинговые системы для масштабирования бизнеса — без пустых обещаний, накруток и слитых бюджетов.</p>
       </div>
       <div class="footer-contacts">

@@ -2,15 +2,15 @@
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#0B0E14"/>
-      <stop offset="1" stop-color="#0F1A18"/>
+      <stop offset="1" stop-color="#0E1422"/>
     </linearGradient>
     <linearGradient id="acc" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#34D399"/>
-      <stop offset="1" stop-color="#10B981"/>
+      <stop offset="0" stop-color="#72AEF4"/>
+      <stop offset="1" stop-color="#3D8BE0"/>
     </linearGradient>
     <radialGradient id="glow" cx="78%" cy="12%" r="55%">
-      <stop offset="0" stop-color="#34D399" stop-opacity="0.22"/>
-      <stop offset="1" stop-color="#34D399" stop-opacity="0"/>
+      <stop offset="0" stop-color="#72AEF4" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#72AEF4" stop-opacity="0"/>
     </radialGradient>
   </defs>
   <rect width="1200" height="630" fill="url(#bg)"/>
@@ -18,13 +18,13 @@
 
   <g transform="translate(80,82)">
     <rect width="60" height="60" rx="16" fill="url(#acc)"/>
-    <text x="30" y="44" font-family="Arial, sans-serif" font-size="38" font-weight="800" fill="#04130C" text-anchor="middle">S</text>
-    <text x="80" y="42" font-family="Arial, sans-serif" font-size="30" font-weight="700" fill="#E7EBF3">Skvortsov <tspan fill="#34D399" font-weight="800">ADV</tspan></text>
+    <text x="30" y="44" font-family="Arial, sans-serif" font-size="38" font-weight="800" fill="#06182B" text-anchor="middle">S</text>
+    <text x="80" y="42" font-family="Arial, sans-serif" font-size="30" font-weight="700" fill="#E7EBF3">Skvortsov <tspan fill="#72AEF4" font-weight="800">ADV</tspan></text>
   </g>
 
   <text x="80" y="290" font-family="Arial, sans-serif" font-size="68" font-weight="800" fill="#E7EBF3">Маркетинг под</text>
   <text x="80" y="370" font-family="Arial, sans-serif" font-size="68" font-weight="800" fill="#E7EBF3">бизнес-результат:</text>
-  <text x="80" y="450" font-family="Arial, sans-serif" font-size="68" font-weight="800" fill="#34D399">от стратегии до лидов</text>
+  <text x="80" y="450" font-family="Arial, sans-serif" font-size="68" font-weight="800" fill="#72AEF4">от стратегии до лидов</text>
 
   <text x="80" y="540" font-family="Arial, sans-serif" font-size="30" fill="#9AA6BC">Fractional CMO · 16+ лет · BBDO · Бесплатный аудит роста за 7 дней</text>
 </svg>
