@@ -29,3 +29,9 @@ venv/
 # прочее
 .DS_Store
 *.log
+
+# превью-скриншоты (не коммитим)
+v*_full.png
+v*_hero.png
+v*_mobile.png
+site_preview_*.png
