@@ -318,7 +318,9 @@ def _handle_assist(chat_id, url: str) -> None:
     if km:
         head += km + "\n"
     if app.review.get("verdict"):  # критик есть только в премиум-режиме (двухагентном)
-        head += f"_Проверка:_ {app.review.get('verdict')} {app.review.get('score', '')}/100"
+        head += f"_Проверка критика:_ {app.review.get('verdict')} {app.review.get('score', '')}/100"
+        if app.review.get("level_fit"):  # экспертная оценка уровня/позиционирования
+            head += f"\n_Уровень/позиция:_ {str(app.review['level_fit'])[:300]}"
     send(chat_id, head.rstrip())
     send(chat_id, "✉️ *Сопроводительное:*\n" + (app.cover_letter or "—"))
 
