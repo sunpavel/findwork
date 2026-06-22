@@ -1,59 +1,35 @@
 {
-  "name": "Skvortsov ADV — Lead webhook (Telegram + Email)",
+  "name": "Skvortsov ADV — заявки с сайта → Telegram",
   "nodes": [
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "lead",
+        "path": "lead-form",
         "responseMode": "responseNode",
         "options": {
-          "allowedOrigins": "*"
+          "allowedOrigins": "https://skvortsovadv.ru"
         }
       },
-      "id": "webhook-lead",
-      "name": "Webhook /lead",
+      "id": "wh-lead",
+      "name": "Webhook (форма)",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [260, 300],
-      "webhookId": "skvortsov-adv-lead"
+      "webhookId": "skvortsov-adv-lead-form"
     },
     {
       "parameters": {
-        "chatId": "REPLACE_WITH_YOUR_TELEGRAM_CHAT_ID",
-        "text": "=🆕 Заявка с сайта Skvortsov ADV\n\n👤 Имя: {{ $json.body.name }}\n📞 Телефон: {{ $json.body.phone }}\n✉️ Email: {{ $json.body.email || '—' }}\n📝 Задача: {{ $json.body.task || '—' }}\n🔗 Страница: {{ $json.body.page }}",
-        "additionalFields": {}
+        "chatId": "ВАШ_CHAT_ID",
+        "text": "=🆕 Заявка с сайта skvortsovadv.ru\n\n👤 Имя: {{ $json.body.name }}\n📞 Телефон: {{ $json.body.phone }}\n✉️ Email: {{ $json.body.email || '—' }}\n📝 Задача: {{ $json.body.task || '—' }}\n🔗 {{ $json.body.page }}",
+        "additionalFields": { "appendAttribution": false }
       },
-      "id": "telegram-notify",
-      "name": "Telegram уведомление",
+      "id": "tg-send",
+      "name": "Telegram → мне",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [540, 200],
+      "position": [540, 300],
       "credentials": {
-        "telegramApi": {
-          "id": "REPLACE",
-          "name": "Telegram account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "fromEmail": "REPLACE_WITH_YOUR_FROM_EMAIL",
-        "toEmail": "sunpavel@gmail.com",
-        "subject": "=Заявка с сайта — {{ $json.body.name }}",
-        "emailFormat": "text",
-        "text": "=Имя: {{ $json.body.name }}\nТелефон: {{ $json.body.phone }}\nEmail: {{ $json.body.email || '—' }}\nЗадача: {{ $json.body.task || '—' }}\nСтраница: {{ $json.body.page }}\nВремя: {{ $json.body.ts }}",
-        "options": {}
-      },
-      "id": "email-notify",
-      "name": "Email уведомление",
-      "type": "n8n-nodes-base.emailSend",
-      "typeVersion": 2,
-      "position": [540, 400],
-      "credentials": {
-        "smtp": {
-          "id": "REPLACE",
-          "name": "SMTP account"
-        }
+        "telegramApi": { "id": "ВЫБЕРИ_СВОЙ_БОТ", "name": "SkvortsovADV bot" }
       }
     },
     {
@@ -63,30 +39,21 @@
         "options": {
           "responseHeaders": {
             "entries": [
-              { "name": "Access-Control-Allow-Origin", "value": "*" }
+              { "name": "Access-Control-Allow-Origin", "value": "https://skvortsovadv.ru" }
             ]
           }
         }
       },
-      "id": "respond-ok",
-      "name": "Ответ OK",
+      "id": "resp-ok",
+      "name": "Ответ сайту",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [820, 300]
     }
   ],
   "connections": {
-    "Webhook /lead": {
-      "main": [
-        [
-          { "node": "Telegram уведомление", "type": "main", "index": 0 },
-          { "node": "Email уведомление", "type": "main", "index": 0 }
-        ]
-      ]
-    },
-    "Telegram уведомление": {
-      "main": [[{ "node": "Ответ OK", "type": "main", "index": 0 }]]
-    }
+    "Webhook (форма)": { "main": [[{ "node": "Telegram → мне", "type": "main", "index": 0 }]] },
+    "Telegram → мне": { "main": [[{ "node": "Ответ сайту", "type": "main", "index": 0 }]] }
   },
   "active": false,
   "settings": { "executionOrder": "v1" },
