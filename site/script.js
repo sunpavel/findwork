@@ -9,7 +9,7 @@
    * Пока поле пустое — форма отправляет заявку через почтовый клиент (mailto)
    * и предлагает написать в Telegram, чтобы ни один лид не потерялся.
    * ----------------------------------------------------------- */
-  var LEAD_WEBHOOK_URL = ""; // напр. "https://n8n.ваш-домен.ru/webhook/lead"
+  var LEAD_WEBHOOK_URL = "https://solarn8n.pro/webhook/lead-form"; // n8n → Telegram
   var CONTACT_EMAIL = "sunpavel@gmail.com";
   var TELEGRAM_USER = "SkvortsovADV";
 
