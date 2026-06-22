@@ -3,6 +3,14 @@
   <url><loc>https://skvortsovadv.ru/</loc><changefreq>monthly</changefreq><priority>1.0</priority></url>
   <url><loc>https://skvortsovadv.ru/services/</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
   <url><loc>https://skvortsovadv.ru/cases/</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://skvortsovadv.ru/cases/termoland/</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://skvortsovadv.ru/cases/asterus-alia/</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://skvortsovadv.ru/cases/glavstroy-beregovoy/</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://skvortsovadv.ru/cases/glavstroy-yauza/</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://skvortsovadv.ru/cases/space-1/</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://skvortsovadv.ru/cases/pragmacore/</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://skvortsovadv.ru/cases/rukki/</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://skvortsovadv.ru/cases/ndv/</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://skvortsovadv.ru/about/</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://skvortsovadv.ru/blog/</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
   <url><loc>https://skvortsovadv.ru/privacy/</loc><changefreq>yearly</changefreq><priority>0.2</priority></url>
