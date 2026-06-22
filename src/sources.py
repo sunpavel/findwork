@@ -43,7 +43,7 @@ def _trudvsem_query(text: str, limit: int = 100) -> list[dict]:
     """Один запрос к официальному открытому API «Работа России» (Trudvsem)."""
     qs = urllib.parse.urlencode({"text": text, "limit": limit})
     req = urllib.request.Request(f"{TRUDVSEM_API}?{qs}", headers={"Accept": "application/json"})
-    with urllib.request.urlopen(req, timeout=30) as resp:
+    with _hh_urlopen(req, timeout=30) as resp:
         payload = json.loads(resp.read().decode("utf-8"))
     items = (payload.get("results") or {}).get("vacancies") or []
     out = []
@@ -99,6 +99,22 @@ def _hh_user_agent() -> str:
     return os.environ.get("HH_USER_AGENT", "findwork/1.0 (sunpavel@gmail.com)")
 
 
+def _hh_urlopen(req, timeout: int = 30):
+    """urlopen для запросов к HH с поддержкой HH_PROXY.
+
+    HH банит дата-центровые IP через DDoS-Guard (403 forbidden ещё ДО API, server: ddos-guard).
+    HH_PROXY (http/https-прокси в стране без бана — жилой/РФ) даёт обходной путь ТОЛЬКО для HH,
+    не трогая остальной трафик (n8n/LLM/Telegram). Без переменной — обычный urlopen (он и так
+    уважает HTTPS_PROXY/HTTP_PROXY из окружения)."""
+    import os
+    proxy = os.environ.get("HH_PROXY")
+    if proxy:
+        opener = urllib.request.build_opener(
+            urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
+        return opener.open(req, timeout=timeout)
+    return urllib.request.urlopen(req, timeout=timeout)
+
+
 def _hh_app_token() -> str | None:
     """Токен ПРИЛОЖЕНИЯ (grant_type=client_credentials) — для поиска вакансий без логина.
     Полностью официально. Нужны HH_CLIENT_ID/HH_CLIENT_SECRET из https://dev.hh.ru/admin.
@@ -120,7 +136,7 @@ def _hh_app_token() -> str | None:
         f"{HH_API_BASE}/token", data=body,
         headers={"HH-User-Agent": _hh_user_agent(),
                  "Content-Type": "application/x-www-form-urlencoded"})
-    with urllib.request.urlopen(req, timeout=30) as resp:
+    with _hh_urlopen(req, timeout=30) as resp:
         tok = json.loads(resp.read().decode("utf-8"))
     STATE_DIR.mkdir(exist_ok=True)
     tok["expires_at"] = time.time() + tok.get("expires_in", 3600)
@@ -181,7 +197,7 @@ def _hh_query(text: str, token: str, area: int = 1, per_page: int = 100,
         f"{HH_API_BASE}/vacancies?{qs}",
         headers={"Authorization": f"Bearer {token}", "HH-User-Agent": _hh_user_agent(),
                  "Accept": "application/json"})
-    with urllib.request.urlopen(req, timeout=30) as resp:
+    with _hh_urlopen(req, timeout=30) as resp:
         payload = json.loads(resp.read().decode("utf-8"))
     out = []
     for v in payload.get("items", []):

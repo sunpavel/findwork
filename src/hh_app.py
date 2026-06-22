@@ -38,6 +38,18 @@ HH_API_BASE = "https://api.hh.ru"
 STATE_DIR = Path(__file__).resolve().parent.parent / "state"
 APP_TOKEN_FILE = STATE_DIR / "hh_app_token.json"
 
+
+def _urlopen(req, timeout: int = 30):
+    """urlopen с поддержкой HH_PROXY — обход бана IP дата-центра DDoS-Guard на стороне HH
+    (403 forbidden, server: ddos-guard). Проксирует ТОЛЬКО HH-трафик. Без переменной —
+    обычный urlopen (он и так уважает HTTPS_PROXY/HTTP_PROXY)."""
+    proxy = os.environ.get("HH_PROXY")
+    if proxy:
+        opener = urllib.request.build_opener(
+            urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
+        return opener.open(req, timeout=timeout)
+    return urllib.request.urlopen(req, timeout=timeout)
+
 # OAuth-эндпоинт официального приложения. client_id/secret приложения публично
 # известны (их использует hh-applicant-tool); задаются через окружение, чтобы не
 # зашивать секреты в репозиторий. Нужны только для refresh нашего собственного токена.
@@ -116,7 +128,7 @@ def _refresh_app_token(refresh_token: str) -> str:
         OAUTH_TOKEN_URL, data=body,
         headers={"HH-User-Agent": _user_agent(),
                  "Content-Type": "application/x-www-form-urlencoded"})
-    with urllib.request.urlopen(req, timeout=30) as resp:
+    with _urlopen(req, timeout=30) as resp:
         tok = json.loads(resp.read().decode("utf-8"))
     if "access_token" not in tok:
         raise HHAppError(f"refresh приложения не вернул access_token: {tok}")
@@ -166,7 +178,7 @@ def _request(method: str, path: str, *, params: dict | None = None,
         headers["Content-Type"] = "application/json"
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with _urlopen(req, timeout=30) as resp:
             raw = resp.read().decode("utf-8")
             return json.loads(raw) if raw.strip() else {}
     except urllib.error.HTTPError as e:
@@ -253,7 +265,7 @@ def clone_resume(base_resume_id: str, overrides: dict) -> str:
             "Accept": "application/json",
         }, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with _urlopen(req, timeout=30) as resp:
             location = resp.headers.get("Location", "")
             resp.read()
     except urllib.error.HTTPError as e:
@@ -293,7 +305,7 @@ def apply_to_vacancy(vacancy_id: str, resume_id: str, message: str) -> None:
             "Content-Type": "application/x-www-form-urlencoded",
         }, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with _urlopen(req, timeout=30) as resp:
             resp.read()
     except urllib.error.HTTPError as e:
         body_txt = e.read().decode("utf-8", errors="replace")

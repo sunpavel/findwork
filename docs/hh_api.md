@@ -41,6 +41,12 @@ HH_CLIENT_ID=...
 HH_CLIENT_SECRET=...
 HH_REDIRECT_URI=https://example.com/oauth
 HH_USER_AGENT=findwork/1.0 (sunpavel@gmail.com)
+# HH_PROXY — необязательно. Обход блокировки HH по IP: с дата-центровых IP HH отдаёт
+# 403 (server: ddos-guard, тело {"errors":[{"type":"forbidden"}]}) ещё ДО API. Если поиск
+# вдруг перестал работать (пустые подборки) — проверь:
+#   curl -si "https://api.hh.ru/vacancies?text=director&per_page=1" -H "HH-User-Agent: $HH_USER_AGENT" | head
+# Увидел ddos-guard/403 → IP сервера забанен. Лечится прокси в стране без бана (жилой/РФ):
+# HH_PROXY=http://user:pass@host:port  (проксирует ТОЛЬКО HH-трафик, не трогая n8n/LLM/Telegram).
 ```
 
 ### 2. Поиск вакансий (токен приложения, без логина)
