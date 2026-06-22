@@ -56,6 +56,9 @@ BROWSER_UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.3
 HH_CLIENT_ID = os.environ.get("HH_CLIENT_ID", "")
 HH_CLIENT_SECRET = os.environ.get("HH_CLIENT_SECRET", "")
 HH_SEED_TOKEN = os.environ.get("HH_STATIC_TOKEN", "")
+# Прокси ТОЛЬКО для HH-нод (обход бана IP n8n-сервера DDoS-Guard'ом). Зашивается в options.proxy
+# при сборке воркфлоу; пусто → прокси не используется. Формат: http://user:pass@host:port.
+HH_PROXY = os.environ.get("HH_PROXY", "").strip()
 
 _BASE_HEADERS = [
     {"name": "User-Agent", "value": BROWSER_UA},
@@ -553,6 +556,19 @@ def build():
     add(n_chan_build, n_chan_tg)
     # ветка приёма откликов от бота (независимый триггер)
     add(n_sync_wh, n_sync_code)
+
+    # HH банит дата-центровые IP через DDoS-Guard (403 forbidden ещё ДО API). Если n8n-сервер
+    # забанен — все HH-ноды отдают 403 и подборка пустеет. HH_PROXY (http(s)-прокси в стране
+    # без бана: жилой/РФ) проставляется в options.proxy ТОЛЬКО HH-нодам (по URL api.hh.ru),
+    # не трогая LLM/Telegram. Пусто → ничего не меняем. См. docs/hh_api.md.
+    if HH_PROXY:
+        n_proxied = 0
+        for n in nodes:
+            if (n.get("type") == "n8n-nodes-base.httpRequest"
+                    and "api.hh.ru" in str(n.get("parameters", {}).get("url", ""))):
+                n["parameters"].setdefault("options", {})["proxy"] = HH_PROXY
+                n_proxied += 1
+        print(f"HH_PROXY задан — проксируем {n_proxied} HH-нод через {HH_PROXY.split('@')[-1]}")
 
     return {"name": "hh.ru — findwork (скоринг)", "nodes": nodes, "connections": connections,
             "settings": {"executionOrder": "v1", "timezone": "Europe/Moscow"}}

@@ -48,6 +48,12 @@ HH_USER_AGENT=findwork/1.0 (sunpavel@gmail.com)
 # Увидел ddos-guard/403 → IP сервера забанен. Лечится прокси в стране без бана (жилой/РФ):
 # HH_PROXY=http://user:pass@host:port  (проксирует ТОЛЬКО HH-трафик, не трогая n8n/LLM/Telegram).
 ```
+Python-путь (`pipeline.py`) подхватывает `HH_PROXY` сразу. Для ЖИВОГО n8n-дайджеста задай
+`HH_PROXY` в окружении при пересборке воркфлоу — генератор зашьёт его в `options.proxy` всех
+5 HH-нод (поиск, токен, отклики, детали вакансии), LLM/Telegram-ноды не трогает:
+```
+HH_PROXY=http://user:pass@host:port python3 tools/build_n8n_workflow.py
+```
 
 ### 2. Поиск вакансий (токен приложения, без логина)
 Ничего больше не нужно — `src/sources.py` сам получит токен приложения по
