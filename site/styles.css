@@ -297,3 +297,6 @@ main>section{animation:pageIn .5s ease both}
 .legal li{margin-bottom:7px}
 .legal a{color:var(--accent);text-decoration:underline}
 .legal .updated{font-size:13px;color:#5b657c;margin-bottom:8px}
+
+/* Кейсы: для отдельных обложек показываем нижнюю часть фото */
+.case-cover.pos-bottom img{object-position:center bottom}
