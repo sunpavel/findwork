@@ -18,7 +18,34 @@
     initMobileNav();
     initLeadForm();
     initCookieBar();
+    initCaseFilter();
   });
+
+  function initCaseFilter() {
+    var tabs = document.querySelectorAll(".filter-tab");
+    var cards = document.querySelectorAll(".pcase-card");
+    if (tabs.length) {
+      tabs.forEach(function (tab) {
+        tab.addEventListener("click", function () {
+          tabs.forEach(function (t) { t.classList.remove("active"); });
+          tab.classList.add("active");
+          var f = tab.getAttribute("data-filter");
+          cards.forEach(function (c) {
+            var show = f === "all" || c.getAttribute("data-industry") === f;
+            c.classList.toggle("pcase-hidden", !show);
+          });
+        });
+      });
+    }
+    cards.forEach(function (c) {
+      var href = c.getAttribute("data-href");
+      if (!href) return;
+      c.addEventListener("click", function (e) {
+        if (e.target.closest("a")) return;
+        window.location.href = href;
+      });
+    });
+  }
 
   function initCookieBar() {
     try { if (localStorage.getItem("cookie-consent") === "1") return; } catch (e) {}
