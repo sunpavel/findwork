@@ -216,6 +216,18 @@ def _handle_hh(chat_id, target: str) -> None:
         send(chat_id, p.block_reason)
         return
 
+    # Вакансия с обязательным тестом: HH не пускает отклик через API. Письмо показываем
+    # (его можно скопировать), но кнопку отправки не даём — откликаться надо вручную.
+    if p.requires_test:
+        send(chat_id, (
+            f"🎯 *{p.title}* — {p.company}\n"
+            f"Скор: *{p.score}/100*\n\n"
+            f"📝 *Эта вакансия требует тест/анкету работодателя.* HH не принимает такой отклик "
+            f"через API — скопируй письмо ниже и откликнись вручную:\n{p.apply_url}\n\n"
+            f"✉️ *Сопроводительное (под вакансию):*\n{p.cover_letter}"
+        ))
+        return
+
     token = _store_pending(p)
     text = (
         f"🎯 *{p.title}* — {p.company}\n"

@@ -201,6 +201,8 @@ class Prepared:
     warnings: list[str] = field(default_factory=list)  # факты на ручную проверку
     blocked: bool = False          # нельзя отправлять (пауза/дубль/лимит/порог)
     block_reason: str = ""
+    requires_test: bool = False    # вакансия требует тест/анкету — HH не пускает отклик через API
+    apply_url: str = ""            # ссылка на вакансию (для ручного отклика)
     notes: list[str] = field(default_factory=list)
 
 
@@ -232,6 +234,11 @@ def prepare(url_or_id: str, *, min_score: int | None = None) -> Prepared:
     vacancy = hh_app.get_vacancy(vid)
     p.title = vacancy.get("name", "")
     p.company = (vacancy.get("employer") or {}).get("name", "")
+    p.apply_url = vacancy.get("alternate_url") or f"https://hh.ru/vacancy/{vid}"
+    # Вакансии с ОБЯЗАТЕЛЬНЫМ тестом HH через API не принимает (POST /negotiations → 403
+    # "Must process test first"). Письмо всё равно готовим (его можно скопировать и откликнуться
+    # вручную), но авто-отправку запрещаем — иначе попытка сгорает на 403.
+    p.requires_test = bool((vacancy.get("test") or {}).get("required"))
 
     profile = load_profile()
     title, text = _vacancy_text(vacancy)
@@ -276,6 +283,10 @@ def commit(p: Prepared) -> ApplyResult:
     res = ApplyResult(ok=False, vacancy_id=p.vacancy_id, title=p.title,
                       company=p.company, score=p.score,
                       cover_letter=p.cover_letter, tailor_source=p.tailor_source)
+    if p.requires_test:
+        res.message = ("📝 Вакансия требует тест работодателя — отклик через API невозможен (HH: "
+                       "test_required). Откликнись вручную: " + (p.apply_url or ""))
+        return res
     # повторная проверка контроля на момент отправки
     blocked, reason = _guard(p.vacancy_id)
     if blocked:
@@ -330,6 +341,13 @@ def apply_to(url_or_id: str, *, dry_run: bool = False,
                            company=p.company, score=p.score,
                            cover_letter=p.cover_letter, tailor_source=p.tailor_source,
                            message=p.block_reason, notes=p.notes)
+    if p.requires_test:
+        return ApplyResult(ok=False, vacancy_id=p.vacancy_id, title=p.title,
+                           company=p.company, score=p.score,
+                           cover_letter=p.cover_letter, tailor_source=p.tailor_source,
+                           message=("📝 Вакансия требует тест работодателя — отклик через API "
+                                    "невозможен. Откликнись вручную: " + (p.apply_url or "")),
+                           notes=p.notes)
     if dry_run:
         return ApplyResult(
             ok=True, vacancy_id=p.vacancy_id, title=p.title, company=p.company,
