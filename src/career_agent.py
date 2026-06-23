@@ -385,7 +385,7 @@ def _generate(vacancy: dict, master_md: str, preferences: str,
     # lean (free-режим): компактный JSON (resume+cover_letter) и меньше токенов — надёжнее.
     system = STRATEGIST_SYSTEM_LEAN if lean else STRATEGIST_SYSTEM
     return llm.complete_json(system, user, provider=provider,
-                             model=model, max_tokens=(8000 if lean else 12000))
+                             model=model, max_tokens=(8000 if lean else 16000))
 
 
 def _review(vacancy: dict, master_md: str, draft: dict) -> tuple[dict, str]:
@@ -427,13 +427,19 @@ def _qa_pass(vacancy: dict, master_md: str, preferences: str, draft: dict,
     figs = verify.figures_to_check(draft.get("cover_letter", ""), resume, master_md)
     companies = verify.unknown_companies(resume, master_md)
     gaps = verify.unsurfaced_supported_skills(vacancy, resume, master_md)
+    dropped = verify.missing_companies(resume, master_md)  # пропущенные места работы (баг «2 места»)
     # «Вода»: мало проверяемых цифр из мастера в письме → дотягиваем конкретикой.
     min_metrics = int(os.environ.get("LETTER_MIN_METRICS", "3"))
     metrics = verify.letter_metrics(draft.get("cover_letter", ""), master_md)
     thin = len(metrics) < min_metrics
 
-    if (figs or companies or gaps or thin) and allow_refine:
+    if (figs or companies or gaps or thin or dropped) and allow_refine:
         fixes: list[str] = []
+        if dropped:
+            fixes.append("В резюме ПРОПУЩЕНЫ места работы из мастер-резюме — резюме обязано "
+                         "содержать ВСЕ роли с 2011 года в обратном хронологическом порядке "
+                         "(ранние ⛔ — только если релевантны вакансии). Верни ВСЕ роли, ничего не "
+                         "выбрасывай. Сейчас не хватает: " + "; ".join(dropped))
         if figs:
             fixes.append("Этих чисел/метрик НЕТ в мастер-резюме — убери их или замени на "
                          "реальные из мастер-резюме, не выдумывай: " + "; ".join(figs))
@@ -458,6 +464,7 @@ def _qa_pass(vacancy: dict, master_md: str, preferences: str, draft: dict,
                 notes.append("QA-проход: дотяжка навыков/цифр + чистка фактов")
                 figs = verify.figures_to_check(draft.get("cover_letter", ""), resume, master_md)
                 companies = verify.unknown_companies(resume, master_md)
+                dropped = verify.missing_companies(resume, master_md)
                 metrics = verify.letter_metrics(draft.get("cover_letter", ""), master_md)
         except llm.LLMError as e:
             notes.append(f"QA-проход пропущен ({e})")
@@ -470,6 +477,9 @@ def _qa_pass(vacancy: dict, master_md: str, preferences: str, draft: dict,
         warnings.append("проверь цифры (не нашёл в мастер-резюме): " + ", ".join(figs))
     if companies:
         warnings.append("проверь компании (не нашёл в мастер-резюме): " + ", ".join(companies))
+    if dropped:
+        warnings.append("в резюме пропущены места работы из мастера (добавь вручную): "
+                        + ", ".join(dropped))
     return draft, warnings
 
 

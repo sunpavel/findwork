@@ -148,6 +148,41 @@ def unknown_companies(resume: dict, master_md: str, limit: int = 6) -> list[str]
     return res[:limit]
 
 
+_JOB_HEADER = re.compile(r"^###\s+(.+)$", re.M)
+_EARLY_MARK = re.compile(r"⛔\s*РОЛИ НИЖЕ")
+
+
+def master_companies(master_md: str, include_early: bool = False) -> list[str]:
+    """Названия компаний из заголовков опыта мастер-резюме («### Company — …»).
+
+    По умолчанию ранний опыт (после маркера «⛔ РОЛИ НИЖЕ») исключаем — он включается
+    в резюме только если релевантен вакансии (см. правило в STRATEGIST)."""
+    text = master_md or ""
+    if not include_early:
+        m = _EARLY_MARK.search(text)
+        if m:
+            text = text[:m.start()]
+    out: list[str] = []
+    for h in _JOB_HEADER.finditer(text):
+        name = re.split(r"\s[—(]", h.group(1).strip(), maxsplit=1)[0].strip()
+        if name and name not in out:
+            out.append(name)
+    return out
+
+
+def missing_companies(resume: dict, master_md: str, limit: int = 12) -> list[str]:
+    """Места работы из мастер-резюме (с 2011), которых НЕТ в адаптированном резюме —
+    т.е. пропущенные роли. Сигнал, что писатель урезал карьерную историю (баг «2 места»)."""
+    hay = " ".join((e.get("company") or "") for e in (resume.get("experience") or [])).lower()
+    res: list[str] = []
+    for c in master_companies(master_md):
+        ws = _sig_words(c)
+        present = any(w in hay for w in ws) if ws else (c.lower() in hay)
+        if not present:
+            res.append(c)
+    return res[:limit]
+
+
 def unsurfaced_supported_skills(vacancy: dict, resume: dict, master_md: str, limit: int = 8) -> list[str]:
     """Навыки вакансии, которые подтверждаются мастером, но не отражены в резюме.
 
