@@ -153,6 +153,20 @@ def _red_flags(title_n: str, text_n: str, profile: dict) -> list[str]:
     return out[:6]
 
 
+def _below_level(title_n: str, profile: dict) -> str | None:
+    """Роль НИЖЕ целевого уровня кандидата (C-level / директор функции). Возвращает маркер или None.
+    Exec-титулы (директор/CCO/CMO/коммерческий директор/вице-президент) снимают штраф, даже если
+    в названии есть «отдел» (напр. «директор департамента»). Вариант B: не тратить отклики на
+    под-уровневые роли (РОП, руководитель отдела/группы, тимлид, старший менеджер)."""
+    lf = profile.get("level_filter") or {}
+    if any(_contains(title_n, e) for e in (lf.get("exec_ok") or [])):
+        return None
+    for w in (lf.get("below") or []):
+        if _contains(title_n, w):
+            return w
+    return None
+
+
 def score_vacancy(title: str, description: str,
                   salary: dict | None = None,
                   profile: dict | None = None) -> ScoreResult:
@@ -165,11 +179,16 @@ def score_vacancy(title: str, description: str,
     sal, sal_note = _salary_score(salary, profile)
     ind = _industry_score(text_n, profile)
     flags = _red_flags(title_n, text_n, profile)
+    below = _below_level(title_n, profile)
 
     w = profile["scoring_weights"]
     raw = t * w["title"] + s * w["skills"] + sal * w["salary"] + ind * w["industry"]
     # штраф за red flags: каждый минус 8 баллов (в заголовке — больнее)
     penalty = sum(0.12 if f.startswith("в заголовке") else 0.06 for f in flags)
+    # штраф за под-уровневую роль (вариант B): вытесняет РОП/«руководитель отдела» из дайджеста.
+    if below:
+        penalty += float((profile.get("level_filter") or {}).get("penalty", 0.30))
+        flags = [f"ниже уровня (C-level): {below}"] + flags
     score = int(round(max(0.0, min(1.0, raw - penalty)) * 100))
 
     th = profile["thresholds"]
