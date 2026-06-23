@@ -333,6 +333,8 @@ def _handle_assist(chat_id, url: str) -> None:
         head += f"_Проверка критика:_ {app.review.get('verdict')} {app.review.get('score', '')}/100"
         if app.review.get("level_fit"):  # экспертная оценка уровня/позиционирования
             head += f"\n_Уровень/позиция:_ {str(app.review['level_fit'])[:300]}"
+    if app.notes:  # чем сгенерировано: модель писателя/ревизора, QA-проход (для диагностики)
+        head += f"\n_Сборка:_ {'; '.join(str(n) for n in app.notes)[:400]}"
     send(chat_id, head.rstrip())
     send(chat_id, "✉️ *Сопроводительное:*\n" + (app.cover_letter or "—"))
 
