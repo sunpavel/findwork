@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 import urllib.error
 import urllib.parse
@@ -219,6 +220,15 @@ def list_resumes() -> list[dict]:
 def get_resume(resume_id: str) -> dict:
     """Полный объект резюме (GET /resumes/{id}) — основа для клонирования/правки."""
     return _request("GET", f"/resumes/{resume_id}")
+
+
+def publish_resume(resume_id: str) -> None:
+    """Поднимает резюме в поиске (POST /resumes/{id}/publish) — аналог кнопки «Обновить дату»
+    на hh.ru. HH разрешает поднимать не чаще раза в 4 часа: при слишком частом вызове вернёт
+    429 (то есть ежедневный запуск в 10:00 безопасен). Принимает id или полный URL резюме."""
+    m = re.search(r"/resume/([0-9a-zA-Z]+)", resume_id)
+    rid = m.group(1) if m else resume_id.strip()
+    _request("POST", f"/resumes/{rid}/publish")
 
 
 # Поля резюме, которые HH вычисляет сам и которые нельзя слать при создании/правке.

@@ -252,6 +252,38 @@ systemctl daemon-reload
 systemctl enable --now findwork-deploy.timer >/dev/null 2>&1 || systemctl restart findwork-deploy.timer
 echo "ok: авто-деплой включён (изменения из git применяются сами ≤1 мин)"
 
+# --- 6. Подъём выбранных резюме на hh.ru в 10:00 ----------------------------
+say "Доп: подъём резюме на hh.ru (ежедневно 10:00 МСК)"
+cat > /etc/systemd/system/findwork-bump.service <<UNIT
+[Unit]
+Description=findwork: поднять выбранные резюме на hh.ru (publish)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=${REPO}
+EnvironmentFile=${ENV_FILE}
+ExecStart=${PY} ${REPO}/scripts/bump_resumes.py
+UNIT
+
+cat > /etc/systemd/system/findwork-bump.timer <<UNIT
+[Unit]
+Description=findwork: подъём резюме ежедневно в 10:00 МСК
+
+[Timer]
+OnCalendar=*-*-* 10:00:00 Europe/Moscow
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target
+UNIT
+
+systemctl daemon-reload
+systemctl enable --now findwork-bump.timer >/dev/null 2>&1 || systemctl restart findwork-bump.timer
+echo "ok: подъём резюме включён (ежедневно 10:00 МСК)"
+
 say "Готово!"
 cat <<DONE
 Статус сервисов:
