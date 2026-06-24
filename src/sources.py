@@ -184,7 +184,7 @@ def _hh_query(text: str, token: str, area: int = 1, per_page: int = 100,
     params = {
         "text": text,
         "search_field": search_field,
-        "area": area,
+        "area": area,  # int или список регионов (Москва=1, МО=113, СПб=2019)
         "only_with_salary": "false",
         "order_by": order_by,
         "per_page": per_page,
@@ -192,7 +192,7 @@ def _hh_query(text: str, token: str, area: int = 1, per_page: int = 100,
     }
     if date_from:
         params["date_from"] = date_from
-    qs = urllib.parse.urlencode(params)
+    qs = urllib.parse.urlencode(params, doseq=True)  # doseq — чтобы список area дал area=1&area=113…
     req = urllib.request.Request(
         f"{HH_API_BASE}/vacancies?{qs}",
         headers={"Authorization": f"Bearer {token}", "HH-User-Agent": _hh_user_agent(),
@@ -229,7 +229,7 @@ def hh_source(profile: dict, since_days: int = 2, **_) -> list[dict]:
     """
     import datetime as _dt
     token = _hh_token()
-    area = (profile.get("locations") or {}).get("hh_area_ids", [1])[0]
+    area = (profile.get("locations") or {}).get("hh_area_ids") or [1]  # все регионы профиля (не только Москва)
     date_from = (_dt.date.today() - _dt.timedelta(days=since_days)).strftime("%Y-%m-%dT00:00:00")
     queries = profile.get("search_queries") or [r["name"] for r in profile.get("target_roles", [])]
     seen, result = set(), []

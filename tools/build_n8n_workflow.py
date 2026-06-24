@@ -50,7 +50,11 @@ N8N_KEY = os.environ.get("N8N_KEY", "")
 TELEGRAM_CRED = {"id": "C6kRfnWdYvqjRNrb", "name": "SolarHH_bot"}
 OPENAI_CRED = {"id": "uXn6hZoeLAiQJHNZ", "name": "Chekanal"}
 CHAT_ID = "109790719"
-SALARY_MIN = 450000
+# Зарплатный «пол» поиска (HH): держим НИЗКИМ — директорские часто пишут «от 300к» грязными
+# (реально больше), а high-floor их выкидывает. Качество добирает скоринг (salaryScore) и судья.
+SALARY_MIN = int(os.environ.get("HH_SEARCH_SALARY_MIN", "250000"))
+# Регионы поиска из профиля (Москва=1, МО=113, СПб=2019) — НЕ только Москва. Кандидат открыт к remote.
+AREAS = (PROFILE.get("locations") or {}).get("hh_area_ids") or [1]
 BROWSER_UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
               "(KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36")
 HH_CLIENT_ID = os.environ.get("HH_CLIENT_ID", "")
@@ -77,7 +81,7 @@ HH_QUERY = """={
   "only_with_salary": "false",
   "salary": %(sal)d,
   "search_field": ["name"],
-  "area": 1,
+  "area": %(area)s,
   "date_from": "{{ $('today').item.json.date }}T00:00:00",
   "order_by": "publication_time",
   "page": 0,
@@ -439,7 +443,7 @@ def build():
         search_nodes.append(node(
             f"HH: {q}"[:62], "n8n-nodes-base.httpRequest", 4.2,
             {"url": "=https://api.hh.ru/vacancies", "sendQuery": True, "specifyQuery": "json",
-             "jsonQuery": HH_QUERY % {"role": q, "sal": SALARY_MIN},
+             "jsonQuery": HH_QUERY % {"role": q, "sal": SALARY_MIN, "area": json.dumps(AREAS)},
              "sendHeaders": True, "headerParameters": SEARCH_HEADERS, "options": {}},
             [-420, 60 + i * 60],
             extra={"onError": "continueRegularOutput", "retryOnFail": True, "maxTries": 3, "waitBetweenTries": 4000}))
