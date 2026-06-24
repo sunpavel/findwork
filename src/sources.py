@@ -76,7 +76,7 @@ def trudvsem_source(profile: dict, limit_per_query: int = 100, **_) -> list[dict
     Бесплатно, без авторизации и без обхода чего-либо. Ищем по названиям целевых
     ролей, агрегируем и дедупим по id. Релевантность отсеет нерелевантное в скоринге.
     """
-    queries = [r["name"] for r in profile.get("target_roles", [])]
+    queries = profile.get("search_queries") or [r["name"] for r in profile.get("target_roles", [])]
     queries += ["директор по маркетингу", "коммерческий директор"]
     seen, result = set(), []
     for q in dict.fromkeys(queries):  # уникальные, сохраняя порядок
@@ -231,7 +231,7 @@ def hh_source(profile: dict, since_days: int = 2, **_) -> list[dict]:
     token = _hh_token()
     area = (profile.get("locations") or {}).get("hh_area_ids", [1])[0]
     date_from = (_dt.date.today() - _dt.timedelta(days=since_days)).strftime("%Y-%m-%dT00:00:00")
-    queries = [r["name"] for r in profile.get("target_roles", [])]
+    queries = profile.get("search_queries") or [r["name"] for r in profile.get("target_roles", [])]
     seen, result = set(), []
     for q in dict.fromkeys(queries):
         try:

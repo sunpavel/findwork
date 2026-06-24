@@ -84,6 +84,12 @@ HH_QUERY = """={
   "per_page": 100
 }"""
 
+# Поисковые запросы к HH (по названию). Единый источник — profile.json.search_queries: расширенная
+# семантика (RU + EN-аббревиатуры/синонимы: CCO/CMO/Chief…), чтобы находить вакансии, названные
+# по-английски, а не только «Коммерческий директор»/«Директор по маркетингу». Под-уровневые роли
+# (РОП и т.п.) НЕ ищем — их отсекает level_filter в скоринге.
+SEARCH_QUERIES = PROFILE.get("search_queries") or ["Коммерческий директор", "директор по маркетингу"]
+
 PICK_JS = """
 const store = $getWorkflowStaticData('global');
 const j = ($input.first() && $input.first().json) || {};
@@ -422,17 +428,19 @@ def build():
                    "sendHeaders": True, "headerParameters": SEARCH_HEADERS, "options": {}},
                   [-420, -40],
                   extra={"onError": "continueRegularOutput", "retryOnFail": True, "maxTries": 2, "waitBetweenTries": 3000})
-    n_hh1 = node("HH Коммерческий директор", "n8n-nodes-base.httpRequest", 4.2,
-                 {"url": "=https://api.hh.ru/vacancies", "sendQuery": True, "specifyQuery": "json",
-                  "jsonQuery": HH_QUERY % {"role": "Коммерческий директор", "sal": SALARY_MIN},
-                  "sendHeaders": True, "headerParameters": SEARCH_HEADERS, "options": {}},
-                 [-420, 160], extra={"onError": "continueRegularOutput", "retryOnFail": True, "maxTries": 3, "waitBetweenTries": 4000})
-    n_hh2 = node("HH Директор по маркетингу", "n8n-nodes-base.httpRequest", 4.2,
-                 {"url": "=https://api.hh.ru/vacancies", "sendQuery": True, "specifyQuery": "json",
-                  "jsonQuery": HH_QUERY % {"role": "директор по маркетингу", "sal": SALARY_MIN},
-                  "sendHeaders": True, "headerParameters": SEARCH_HEADERS, "options": {}},
-                 [-420, 360], extra={"onError": "continueRegularOutput", "retryOnFail": True, "maxTries": 3, "waitBetweenTries": 4000})
-    n_merge = node("Merge", "n8n-nodes-base.merge", 3, {"mode": "append", "numberInputs": 2}, [-220, 260])
+    # Поиск HH: по одной ноде на запрос из SEARCH_QUERIES (расширенная семантика CCO/CMO/…).
+    # Все ветки сходятся в Merge → score+dedup (дубли по hh_id убираются там же).
+    search_nodes = []
+    for i, q in enumerate(SEARCH_QUERIES):
+        search_nodes.append(node(
+            f"HH: {q}"[:62], "n8n-nodes-base.httpRequest", 4.2,
+            {"url": "=https://api.hh.ru/vacancies", "sendQuery": True, "specifyQuery": "json",
+             "jsonQuery": HH_QUERY % {"role": q, "sal": SALARY_MIN},
+             "sendHeaders": True, "headerParameters": SEARCH_HEADERS, "options": {}},
+            [-420, 60 + i * 60],
+            extra={"onError": "continueRegularOutput", "retryOnFail": True, "maxTries": 3, "waitBetweenTries": 4000}))
+    n_merge = node("Merge", "n8n-nodes-base.merge", 3,
+                   {"mode": "append", "numberInputs": len(search_nodes)}, [-220, 260])
     n_list = node("score+dedup", "n8n-nodes-base.code", 2,
                   {"jsCode": (SCORE_FUNCS + LIST_GLUE).replace("__PROFILE__", PJSON)}, [-20, 260])
     n_getvac = node("get full vacancy", "n8n-nodes-base.httpRequest", 4.2,
@@ -509,7 +517,7 @@ def build():
                            "__APPLIED_TOKEN__", os.environ.get("N8N_APPLIED_TOKEN", ""))},
                        [-780, 760])
 
-    nodes = [n_manual, n_sched, n_today, n_mint, n_pick, n_apps, n_hh1, n_hh2, n_merge,
+    nodes = [n_manual, n_sched, n_today, n_mint, n_pick, n_apps, *search_nodes, n_merge,
              n_list, n_getvac, n_llm, n_build, n_tg,
              n_fac, n_fac_llm, n_fac_build, n_fac_tg,
              n_chan, n_chan_llm, n_chan_build, n_chan_tg,
@@ -537,12 +545,10 @@ def build():
     add(n_mint, n_pick)
     # token cache → история откликов → оба HH-поиска (гарантируем, что отклики получены до score+dedup)
     add(n_pick, n_apps)
-    add(n_apps, n_hh1)
-    add(n_apps, n_hh2)
-    connections.setdefault("HH Коммерческий директор", {}).setdefault("main", [[]])[0].append(
-        {"node": "Merge", "type": "main", "index": 0})
-    connections.setdefault("HH Директор по маркетингу", {}).setdefault("main", [[]])[0].append(
-        {"node": "Merge", "type": "main", "index": 1})
+    for i, sn in enumerate(search_nodes):
+        add(n_apps, sn)               # история откликов → все ветки поиска
+        connections.setdefault(sn["name"], {}).setdefault("main", [[]])[0].append(
+            {"node": "Merge", "type": "main", "index": i})
     add(n_merge, n_list)
     add(n_list, n_getvac)
     add(n_getvac, n_llm)
