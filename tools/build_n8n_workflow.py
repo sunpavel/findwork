@@ -116,11 +116,15 @@ function salaryScore(s){ const t=PROFILE.salary.target_min,f=PROFILE.salary.soft
 function industryScore(x){ const h=Object.entries(PROFILE.industries).filter(([n])=>contains(x,n)).map(([,w])=>w);
   return h.length?Math.min(1,Math.max(...h)):0.5; }
 function redFlags(t,x){ const f=[]; for(const w of PROFILE.stop_words){ if(contains(t,w))f.push('t:'+w); else if(contains(x,w))f.push(w);} return [...new Set(f)].slice(0,6); }
+function belowLevel(t){ const lf=PROFILE.level_filter||{};
+  if((lf.exec_ok||[]).some(e=>contains(t,e)))return null;
+  for(const w of (lf.below||[])) if(contains(t,w))return w; return null; }
 function scoreVac(title,desc,salary){ const tN=norm(title),xN=norm(title+'. '+(desc||''));
   const t=titleScore(tN),s=skillsScore(xN),sal=salaryScore(salary),ind=industryScore(xN);
   const fl=redFlags(tN,xN),w=PROFILE.scoring_weights;
   let raw=t.score*w.title+s.score*w.skills+sal*w.salary+ind*w.industry;
-  const pen=fl.reduce((p,f)=>p+(f.startsWith('t:')?0.12:0.06),0);
+  let pen=fl.reduce((p,f)=>p+(f.startsWith('t:')?0.12:0.06),0);
+  if(belowLevel(tN)) pen+=(PROFILE.level_filter&&PROFILE.level_filter.penalty)||0.30;  // вариант B: под-уровневые роли
   return {score:Math.round(Math.max(0,Math.min(1,raw-pen))*100),best_role:t.role,matched:s.matched.slice(0,6)}; }
 function fromHH(v){ const sn=v.snippet||{}; return {
   id:v.id?'hh-'+v.id:'', title:v.name||v.title||'', company:(v.employer||{}).name||v.company||'',
