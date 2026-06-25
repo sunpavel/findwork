@@ -76,17 +76,19 @@ SEARCH_HEADERS = {"parameters": _BASE_HEADERS + [
     {"name": "Authorization", "value": "=Bearer " + TOKEN_EXPR}]}
 
 # only_with_salary=false и БЕЗ параметра salary → вакансии с любой вилкой И без указанной зарплаты.
-# search_field=name; area — массив регионов профиля (Москва+МО+СПб). Зарплату ранжирует скоринг.
+# search_field=name. Регионы (area) НЕ кладём в jsonQuery массивом (n8n сериализует как area[]=…,
+# а HH ждёт area=1&area=2019) — выносим их прямо в URL ниже (AREA_QS).
 HH_QUERY = """={
   "text": "%(role)s",
   "only_with_salary": "false",
   "search_field": ["name"],
-  "area": %(area)s,
   "date_from": "{{ $('today').item.json.date }}T00:00:00",
   "order_by": "publication_time",
   "page": 0,
   "per_page": 100
 }"""
+# Явные повторяющиеся параметры региона в URL — пуленепробиваемо: area=1&area=113&area=2019.
+AREA_QS = "&".join("area=%d" % a for a in AREAS)
 
 # Поисковые запросы к HH (по названию). Единый источник — profile.json.search_queries: расширенная
 # семантика (RU + EN-аббревиатуры/синонимы: CCO/CMO/Chief…), чтобы находить вакансии, названные
@@ -442,8 +444,8 @@ def build():
     for i, q in enumerate(SEARCH_QUERIES):
         search_nodes.append(node(
             f"HH: {q}"[:62], "n8n-nodes-base.httpRequest", 4.2,
-            {"url": "=https://api.hh.ru/vacancies", "sendQuery": True, "specifyQuery": "json",
-             "jsonQuery": HH_QUERY % {"role": q, "area": json.dumps(AREAS)},
+            {"url": "=https://api.hh.ru/vacancies?" + AREA_QS, "sendQuery": True, "specifyQuery": "json",
+             "jsonQuery": HH_QUERY % {"role": q},
              "sendHeaders": True, "headerParameters": SEARCH_HEADERS, "options": {}},
             [-420, 60 + i * 60],
             extra={"onError": "continueRegularOutput", "retryOnFail": True, "maxTries": 3, "waitBetweenTries": 4000}))
