@@ -250,7 +250,7 @@ LLM_PROMPT = (
 # facancy.ru: сбор по API (/api/v1/vacancies?page=N) + фильтр 450к/без вилки + скоринг + дедуп
 FAC_FETCH_GLUE = r'''
 const UA='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36';
-const PAGES=12; let all=[];
+const PAGES=40; let all=[];   // глубже: facancy зеркалит вакансии HH (с сервера доступен), ранний выход на пустой
 for(let p=1;p<=PAGES;p++){
   let resp; try{ resp=await this.helpers.httpRequest({url:'https://facancy.ru/api/v1/vacancies?page='+p,
     headers:{'User-Agent':UA,'Accept':'application/json'}, json:true}); }catch(e){ break; }

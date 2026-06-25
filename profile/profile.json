@@ -228,7 +228,7 @@
   },
   "thresholds": {
     "auto_apply": 80,
-    "digest": 55,
+    "digest": 50,
     "skip_below": 40
   },
   "level_filter": {
