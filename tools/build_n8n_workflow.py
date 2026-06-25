@@ -4,10 +4,10 @@
 Создаёт/обновляет в n8n воркфлоу HH-дайджеста (оригинал не трогаем).
 
 Поток:
-  Schedule(каждые 2ч 9-21)/Manual → today → HH token (минт, не падает при лимите)
+  Schedule(каждый час 9-21)/Manual → today → HH token (минт, не падает при лимите)
     → HH token (cache) [staticData + сид-фолбэк]
     → HH мои отклики (/negotiations; личный токен → исключаем уже-откликнутые; app-токен → 403/skip)
-    → HH «Коммерческий директор» / «Директор по маркетингу» (Bearer; salary>=450k ИЛИ без вилки)
+    → HH-поиск (19 запросов CCO/CMO/…, Bearer; любая зарплата + без вилки; Москва+МО+СПб)
     → Merge → score+dedup (LIST, скоринг по сниппету, дедуп + минус уже-откликнутые, staticData)
     → get full vacancy (/vacancies/{id}) → LLM-судья по мастер-резюме (OpenAI gpt-4o, JSON fit)
     → build digest (ранжирование по fit судьи; keyword — фолбэк + пре-фильтр) → Telegram
@@ -50,9 +50,9 @@ N8N_KEY = os.environ.get("N8N_KEY", "")
 TELEGRAM_CRED = {"id": "C6kRfnWdYvqjRNrb", "name": "SolarHH_bot"}
 OPENAI_CRED = {"id": "uXn6hZoeLAiQJHNZ", "name": "Chekanal"}
 CHAT_ID = "109790719"
-# Зарплатный «пол» поиска (HH): держим НИЗКИМ — директорские часто пишут «от 300к» грязными
-# (реально больше), а high-floor их выкидывает. Качество добирает скоринг (salaryScore) и судья.
-SALARY_MIN = int(os.environ.get("HH_SEARCH_SALARY_MIN", "250000"))
+# Зарплату на HH НЕ фильтруем (only_with_salary=false, без salary): берём вакансии с любой вилкой
+# И без указанной зарплаты — директорские часто без вилки или с заниженным «от». Качество по
+# зарплате добирает скоринг (salaryScore) и LLM-судья, а не грубый отсев на стороне HH.
 # Регионы поиска из профиля (Москва=1, МО=113, СПб=2019) — НЕ только Москва. Кандидат открыт к remote.
 AREAS = (PROFILE.get("locations") or {}).get("hh_area_ids") or [1]
 BROWSER_UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
@@ -75,11 +75,11 @@ TOKEN_EXPR = "{{ $('HH token (cache)').first().json.access_token }}"
 SEARCH_HEADERS = {"parameters": _BASE_HEADERS + [
     {"name": "Authorization", "value": "=Bearer " + TOKEN_EXPR}]}
 
-# salary>=450000 + only_with_salary=false → вакансии от 450к ИЛИ без указанной вилки (док HH)
+# only_with_salary=false и БЕЗ параметра salary → вакансии с любой вилкой И без указанной зарплаты.
+# search_field=name; area — массив регионов профиля (Москва+МО+СПб). Зарплату ранжирует скоринг.
 HH_QUERY = """={
   "text": "%(role)s",
   "only_with_salary": "false",
-  "salary": %(sal)d,
   "search_field": ["name"],
   "area": %(area)s,
   "date_from": "{{ $('today').item.json.date }}T00:00:00",
@@ -413,8 +413,8 @@ def node(name, ntype, ver, params, pos, creds=None, extra=None):
 def build():
     cont = {"onError": "continueRegularOutput"}
     n_manual = node("Manual Trigger", "n8n-nodes-base.manualTrigger", 1, {}, [-1000, 80])
-    n_sched = node("Scan каждые 2ч (9-21)", "n8n-nodes-base.scheduleTrigger", 1.2,
-                   {"rule": {"interval": [{"field": "cronExpression", "expression": "0 9-21/2 * * *"}]}},
+    n_sched = node("Scan каждый час (9-21)", "n8n-nodes-base.scheduleTrigger", 1.2,
+                   {"rule": {"interval": [{"field": "cronExpression", "expression": "0 9-21 * * *"}]}},
                    [-1000, 260])
     n_today = node("today", "n8n-nodes-base.code", 2,
                    {"jsCode": "const d=new Date(Date.now()-3*86400000);\n"
@@ -443,7 +443,7 @@ def build():
         search_nodes.append(node(
             f"HH: {q}"[:62], "n8n-nodes-base.httpRequest", 4.2,
             {"url": "=https://api.hh.ru/vacancies", "sendQuery": True, "specifyQuery": "json",
-             "jsonQuery": HH_QUERY % {"role": q, "sal": SALARY_MIN, "area": json.dumps(AREAS)},
+             "jsonQuery": HH_QUERY % {"role": q, "area": json.dumps(AREAS)},
              "sendHeaders": True, "headerParameters": SEARCH_HEADERS, "options": {}},
             [-420, 60 + i * 60],
             extra={"onError": "continueRegularOutput", "retryOnFail": True, "maxTries": 3, "waitBetweenTries": 4000}))
