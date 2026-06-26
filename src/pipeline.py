@@ -97,6 +97,61 @@ def build_digest_smart(scored: list[tuple[dict, object]], limit: int) -> str:
     return "\n".join(lines)
 
 
+def build_list_text(scored: list[tuple[dict, object]], limit: int, seen: set[str]) -> str:
+    """Плоский (не-HTML) список вакансий для вывода в консоль командой `--list`.
+
+    В отличие от дайджеста: ничего не экранируем (это терминал, а не Telegram), нумеруем
+    и помечаем уже виденные — чтобы было видно, что нового, а что уже проходило ранее.
+    """
+    shown = scored[:limit] if limit and limit > 0 else scored
+    head = f"Релевантных вакансий: {len(scored)}"
+    if len(shown) < len(scored):
+        head += f" (показаны первые {len(shown)}; см. --limit)"
+    lines = [head]
+    for i, (vac, res) in enumerate(shown, 1):
+        title = vac.get("title") or vac.get("name", "")
+        mark = "  [виденная]" if vac.get("id") in seen else ""
+        matched = ", ".join(res.matched_skills[:6]) or "—"
+        lines.append(
+            f"\n{i:>2}. {res.score}/100 · {title}{mark}\n"
+            f"    🏢 {vac.get('company') or '—'} · 📍 {vac.get('area') or '—'} · "
+            f"💰 {_fmt_salary(vac.get('salary'))}\n"
+            f"    🎯 роль: {res.best_role} · ✓ {matched}\n"
+            f"    🔗 {vac.get('url', '')}"
+        )
+    return "\n".join(lines)
+
+
+def list_vacancies(source_name: str, limit: int, unseen_only: bool) -> int:
+    """Только-просмотр: собирает вакансии, скорит keyword-скорингом и печатает релевантные.
+
+    Ничего не отправляет в Telegram и не трогает state/ — поэтому LLM-судью здесь не зовём
+    (это «полистать», а не «разослать дайджест»): быстро, офлайн-безопасно, повторяемо.
+    По умолчанию показываем всё релевантное (включая виденное, с пометкой); с --unseen —
+    только новые вакансии.
+    """
+    profile = load_profile()
+    vacancies = collect(source_name, profile)
+    seen = _load_seen()
+
+    pool = [v for v in vacancies if v["id"] not in seen] if unseen_only else vacancies
+    th = profile["thresholds"]["digest"]
+    scored = [(v, r) for v in pool
+              if (r := score_vacancy(v.get("title") or v.get("name", ""),
+                                     v.get("description", ""), v.get("salary"), profile)).score >= th]
+    scored.sort(key=lambda pair: pair[1].score, reverse=True)
+
+    scope = "новых " if unseen_only else ""
+    print(f"Источники: {source_name} · всего {len(vacancies)} · {scope}релевантных: {len(scored)} · keyword-скоринг")
+    if not scored:
+        print("Релевантных вакансий не найдено.")
+        return 0
+
+    print("\n" + build_list_text(scored, limit, seen) + "\n")
+    print("[list] только просмотр — состояние не изменено, ничего не отправлено")
+    return 0
+
+
 def collect(source_names: str, profile: dict) -> list[dict]:
     """Собирает вакансии из одного или нескольких источников (через запятую).
 
@@ -223,8 +278,14 @@ def main() -> int:
                    help="источник(и) через запятую: sample | trudvsem | hh | 'trudvsem,hh'")
     p.add_argument("--send", action="store_true", help="отправить дайджест в Telegram")
     p.add_argument("--dry-run", action="store_true", help="не менять состояние и не отправлять")
-    p.add_argument("--limit", type=int, default=10, help="сколько вакансий в дайджест")
+    p.add_argument("--limit", type=int, default=10, help="сколько вакансий в дайджест/список (0 — все)")
+    p.add_argument("--list", action="store_true", dest="list_only",
+                   help="только показать релевантные вакансии в консоли (без отправки и без изменения состояния)")
+    p.add_argument("--unseen", action="store_true",
+                   help="с --list: показать только новые (не виденные ранее) вакансии")
     args = p.parse_args()
+    if args.list_only:
+        return list_vacancies(args.source, args.limit, args.unseen)
     return run(args.source, args.send, args.dry_run, args.limit)
 
 
